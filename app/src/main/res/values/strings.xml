@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NetBuild</string>
+    <string name="btn_brief">案件</string>
+    <string name="btn_ask">ヒアリング</string>
+    <string name="btn_rules">FWルール</string>
+    <string name="btn_review">設計レビュー</string>
+    <string name="cb_vlan">来客VLAN分離</string>
+    <string name="cb_dmz">DMZ</string>
+    <string name="cb_deny">来客Deny</string>
+    <string name="cb_subnet">/24</string>
+</resources>

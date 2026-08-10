@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#12100C"
+    android:padding="12dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/app_name"
+        android:textColor="#E0B15C"
+        android:textSize="18sp"
+        android:fontFamily="monospace"
+        android:paddingBottom="8dp" />
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <CheckBox
+                android:id="@+id/cb_vlan"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#D6DEE8"
+                android:text="@string/cb_vlan" />
+
+            <CheckBox
+                android:id="@+id/cb_dmz"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#D6DEE8"
+                android:text="@string/cb_dmz" />
+
+            <CheckBox
+                android:id="@+id/cb_deny"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#D6DEE8"
+                android:text="@string/cb_deny" />
+
+            <CheckBox
+                android:id="@+id/cb_subnet"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#D6DEE8"
+                android:text="@string/cb_subnet" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_brief"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/btn_brief" />
+
+            <Button
+                android:id="@+id/btn_ask"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/btn_ask" />
+
+            <Button
+                android:id="@+id/btn_rules"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/btn_rules" />
+
+            <Button
+                android:id="@+id/btn_review"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/btn_review" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <ScrollView
+        android:id="@+id/scroller"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="8dp">
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <TextView
+                android:id="@+id/console"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:textSize="12sp"
+                android:textColor="#D6DEE8"
+                android:textIsSelectable="true" />
+        </HorizontalScrollView>
+    </ScrollView>
+</LinearLayout>

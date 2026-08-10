@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NetBuild" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#E0B15C</item>
+        <item name="colorOnPrimary">#12100C</item>
+    </style>
+</resources>
