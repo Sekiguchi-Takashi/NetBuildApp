@@ -7,6 +7,11 @@ import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import androidx.core.graphics.Insets;
+import androidx.core.view.OnApplyWindowInsetsListener;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -28,7 +33,11 @@ public class MainActivity extends AppCompatActivity {
 
     private TopologyView topology;
     private ImageView charaStaff;
-    private ImageView charaClient;
+    private ImageView charaPartner;
+    private TextView tvPartnerName;
+    private TextView tvPartnerRole;
+    private TextView tvAllyName;
+    private TextView tvAllyRole;
     private TextView tvDay;
     private TextView tvTrust;
     private TextView tvCost;
@@ -37,15 +46,31 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvHint;
 
     private Incident current;
+    private Stakeholder speaker = Stakeholder.CLIENT;
+    private Ally ally = Ally.STAFF;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        // targetSdk 35 では既定でエッジツーエッジになるため、システムバーぶんの余白を自前で確保する
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.root), new OnApplyWindowInsetsListener() {
+            public WindowInsetsCompat onApplyWindowInsets(View v, WindowInsetsCompat insets) {
+                Insets bars = insets.getInsets(
+                        WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+                v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                return insets;
+            }
+        });
+
         topology = findViewById(R.id.topology);
         charaStaff = findViewById(R.id.chara_staff);
-        charaClient = findViewById(R.id.chara_client);
+        charaPartner = findViewById(R.id.chara_partner);
+        tvPartnerName = findViewById(R.id.tv_partner_name);
+        tvPartnerRole = findViewById(R.id.tv_partner_role);
+        tvAllyName = findViewById(R.id.tv_ally_name);
+        tvAllyRole = findViewById(R.id.tv_ally_role);
         tvDay = findViewById(R.id.tv_day);
         tvTrust = findViewById(R.id.tv_trust);
         tvCost = findViewById(R.id.tv_cost);
@@ -57,12 +82,16 @@ public class MainActivity extends AppCompatActivity {
 
         charaStaff.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                staffMenu();
+                if (ally == Ally.NEWBIE) {
+                    newbieMenu();
+                } else {
+                    staffMenu();
+                }
             }
         });
-        charaClient.setOnClickListener(new View.OnClickListener() {
+        charaPartner.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                clientMenu();
+                partnerMenu();
             }
         });
         charaStaff.setOnLongClickListener(new View.OnLongClickListener() {
@@ -136,6 +165,20 @@ public class MainActivity extends AppCompatActivity {
                 showBrief();
             }
         });
+        actions.add(state.easyMode ? "通常モードに戻す" : "簡単モードにする");
+        handlers.add(new Runnable() {
+            public void run() {
+                toggleEasyMode();
+            }
+        });
+        actions.add("新人に交代する（用語の解説）");
+        handlers.add(new Runnable() {
+            public void run() {
+                ally = Ally.NEWBIE;
+                refresh();
+                newbieMenu();
+            }
+        });
 
         new AlertDialog.Builder(this)
                 .setTitle("何をしますか")
@@ -151,7 +194,298 @@ public class MainActivity extends AppCompatActivity {
     // クライアント — 要望・個性・ヒント
     // ------------------------------------------------------------------
 
+    private void toggleEasyMode() {
+        state.easyMode = !state.easyMode;
+        save();
+        show(state.easyMode ? "簡単モード" : "通常モード",
+                state.easyMode
+                        ? "依頼者がネットワークに詳しい担当者に変わります。\n\n"
+                        + "話しかけるたびに、いま何をすべきかを具体的に教えてくれます。"
+                        + "言われたとおりに進めれば満点（" + evaluator.maxFitness(scenario) + " 点）に届きます。"
+                        : "依頼者は通常どおり、聞かれたことにしか答えません。\n\n"
+                        + "手がかりは総務担当が、障害の一次情報は現場担当が持っています。");
+    }
+
+    /** 状況に応じて、いま話す相手を決める。 */
+    private Stakeholder pickSpeaker() {
+        if (state.easyMode) {
+            return Stakeholder.CLIENT;
+        }
+        if (current != null && !current.resolved) {
+            return Stakeholder.IT_STAFF;
+        }
+        if (totalCost() > scenario.budget || state.trust < 40) {
+            return Stakeholder.BOSS;
+        }
+        if (guestReachesInternal()) {
+            return Stakeholder.INTERN;
+        }
+        if (scenario.revealedCount() < scenario.hidden.size()) {
+            return Stakeholder.OFFICE;
+        }
+        return Stakeholder.CLIENT;
+    }
+
+    /** 来客セグメントから社内に届く状態か。インターンの登場条件に使う。 */
+    private boolean guestReachesInternal() {
+        NetGraph g = design.buildGraph();
+        return new RuleEngine(design.buildRules()).canReach(g, "guest", "pc").reachable;
+    }
+
+    private void partnerMenu() {
+        if (speaker == Stakeholder.BOSS) {
+            bossMenu();
+        } else if (speaker == Stakeholder.IT_STAFF) {
+            itStaffMenu();
+        } else if (speaker == Stakeholder.OFFICE) {
+            officeMenu();
+        } else if (speaker == Stakeholder.INTERN) {
+            internMenu();
+        } else {
+            clientMenu();
+        }
+    }
+
+    /** 総務担当。現場の運用実態を知っていて、未確認要望の手がかりを持つ。 */
+    private void officeMenu() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("日々の運用を見ている立場からお伝えします。\n\n");
+        int unknown = scenario.hidden.size() - scenario.revealedCount();
+        if (unknown > 0) {
+            sb.append("[ 気づいていること（未確認 ").append(unknown).append(" 件）]\n");
+            for (Scenario.Hidden h : scenario.hidden) {
+                if (!h.revealed) {
+                    sb.append("・").append(h.hint).append('\n');
+                }
+            }
+            sb.append("\n正式な要望にするには、依頼者に確認してください。");
+        } else {
+            sb.append("お伝えしたいことは全部お話ししました。");
+        }
+        show("総務担当（先方の運用担当）", sb.toString());
+    }
+
+    /** インターン。悪気なく危ないことをする。設計の穴がそのまま被害になる。 */
+    private void internMenu() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("「来客用のWi-Fi、私も使っていいですか？ 自分のノートPCも持ってきていて……」\n\n");
+        sb.append("[ いまの設計だと ]\n");
+        sb.append("来客セグメントから社内PCに到達できます。");
+        sb.append("悪意のない人が私物端末をつないだだけで、社内が同じネットワークに晒されます。\n\n");
+        if (design.fwGuestDeny && !design.guestVlan) {
+            sb.append("Firewallに来客Denyルールを入れていますが、来客と社員が同じセグメントなので通信はFirewallを通りません。");
+            sb.append("止めるならスイッチ側でVLANを分ける必要があります。");
+        } else {
+            sb.append("図のスイッチか来客端末を押して、VLANで分離してください。");
+        }
+        show("インターン（先方の学生スタッフ）", sb.toString());
+    }
+
+    /** 新人。プレイヤーの代わりに素朴な質問をして、用語をその場の状態で説明する。 */
+    private void newbieMenu() {
+        final String[] topics = {
+                "VLANって何ですか？",
+                "DMZは何のためにあるんですか？",
+                "Firewallの暗黙Denyって？",
+                "サブネットの /24 と /26 の違いは？",
+                "いまの設計はどこが危ないんですか？",
+                "先輩に戻ってもらう"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("新人が聞いてきた")
+                .setItems(topics, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (which == topics.length - 1) {
+                            ally = Ally.STAFF;
+                            refresh();
+                            return;
+                        }
+                        show(topics[which], explain(which));
+                    }
+                })
+                .show();
+    }
+
+    private String explain(int index) {
+        switch (index) {
+            case 0:
+                return "1本のスイッチを、通信できないグループに区切る仕組みです。\n\n"
+                        + "いまは来客が VLAN " + (design.guestVlan ? "20、社員が VLAN 10 で分かれています。"
+                        + "別々のVLANはL2では中継されないので、スイッチを通っても社内には届きません。"
+                        : "10 で社員と同じです。同じVLANなので、来客の端末は社員PCと直接やりとりできます。");
+            case 1:
+                return "外に公開するサーバーを、社内とは別の区画に置く考え方です。\n\n"
+                        + (design.dmz
+                        ? "いまはWebサーバーがDMZにあります。外部から入れるのは443だけで、そこから社内へは行けません。"
+                        : "いまはWebサーバーが社内と同じ区画にあります。外部公開のために社内向けの穴を開けている状態で、"
+                        + "サーバーが乗っ取られると社内がそのまま危険になります。");
+            case 2:
+                return "どのルールにも当てはまらなかった通信は通さない、という決まりです。\n\n"
+                        + "許可を書き忘れると通らない代わりに、書き忘れた危ない通信も通りません。"
+                        + "ルールは上から順に見て、最初に当たったものが適用されます。";
+            case 3:
+                return "使えるアドレスの数が変わります。\n\n"
+                        + "/26 は 62 台、/24 は 254 台。いまは /" + design.prefixLength
+                        + " なので " + design.usableHosts() + " 台まで。\n\n"
+                        + "足りなくなってから広げると、アドレスの振り直しが必要になって高くつきます。";
+            default:
+                StringBuilder sb = new StringBuilder();
+                Evaluator.Result r = evaluator.evaluate(scenario, design, state.extraCost);
+                boolean any = false;
+                for (Evaluator.Finding f : r.findings) {
+                    if ("危険".equals(f.level) || "将来リスク".equals(f.level)) {
+                        sb.append("・").append(f.title).append('\n');
+                        sb.append("  ").append(f.detail).append("\n\n");
+                        any = true;
+                    }
+                }
+                return any ? sb.toString() : "いまのところ、大きな穴は見当たりません。";
+        }
+    }
+
+    /** 決裁者。金額と、その金額で何が防げるのかを突く。 */
+    private void bossMenu() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("予算 ").append(scenario.budget).append(" 円\n");
+        sb.append("見積 ").append(totalCost()).append(" 円\n");
+        if (state.extraCost > 0) {
+            sb.append("うち後追い改修の割増 ").append(state.extraCost).append(" 円\n");
+        }
+        sb.append('\n');
+        if (totalCost() > scenario.budget) {
+            sb.append("超過 ").append(totalCost() - scenario.budget)
+                    .append(" 円。この金額で何が防げるのか説明が要ります。\n\n");
+        } else {
+            sb.append("予算内です。ただし削った項目のリスクは残ります。\n\n");
+        }
+        sb.append("[ 信頼 ").append(state.trust).append(" ]\n");
+        if (state.trust < 40) {
+            sb.append("障害が続いていると聞いています。原因は設計側にありませんか。");
+        } else {
+            sb.append("問題なく動いているうちは口を出しません。");
+        }
+        if (!state.occurredFaults.isEmpty()) {
+            sb.append("\n\n設計が原因の障害がこれまでに ")
+                    .append(state.occurredFaults.size()).append(" 種類起きています。");
+        }
+        show("決裁者（依頼者の上司）", sb.toString());
+    }
+
+    /** 現場担当。観察でわかる手がかりと、障害の一次情報を持っている。 */
+    private void itStaffMenu() {
+        StringBuilder sb = new StringBuilder();
+        if (current != null && !current.resolved) {
+            sb.append("[ 現場からの一次情報 ]\n");
+            sb.append(current.cause.symptom).append("\n\n");
+            if (current.log.isEmpty()) {
+                sb.append("まだ何も調べていません。社員を押して診断してください。\n\n");
+            } else {
+                sb.append("これまでに試したこと\n");
+                for (String entry : current.log) {
+                    sb.append("・").append(entry).append('\n');
+                }
+                sb.append('\n');
+            }
+            sb.append(current.describeBelief());
+        } else {
+            sb.append("いまは特に不具合の報告はありません。\n\n");
+        }
+        show("現場担当（先方の情シス）", sb.toString());
+    }
+
     private void clientMenu() {
+        if (state.easyMode) {
+            easyClientMenu();
+            return;
+        }
+        normalClientMenu();
+    }
+
+    /** 簡単モードの依頼者。ネットワークに詳しく、次の一手を必ず示す。 */
+    private void easyClientMenu() {
+        Evaluator.Result now = evaluator.evaluate(scenario, design, state.extraCost);
+        int max = evaluator.maxFitness(scenario);
+        final int unknown = scenario.hidden.size() - scenario.revealedCount();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("いまの案件適合度 ").append(now.fitness()).append(" / 満点 ").append(max).append("\n\n");
+        sb.append("[ 次にやること ]\n").append(nextAdvice(unknown));
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle("依頼者（ネットワークに詳しい）")
+                .setMessage(sb.toString())
+                .setNegativeButton("閉じる", null);
+        if (unknown > 0) {
+            builder.setPositiveButton("その話を聞く", new DialogInterface.OnClickListener() {
+                public void onClick(DialogInterface dialog, int which) {
+                    askClient();
+                }
+            });
+        } else if (current != null && !current.resolved) {
+            builder.setPositiveButton("診断する", new DialogInterface.OnClickListener() {
+                public void onClick(DialogInterface dialog, int which) {
+                    chooseCommand();
+                }
+            });
+        }
+        builder.show();
+    }
+
+    /** 状態を見て、いま一番やるべきことを1つだけ返す。 */
+    private String nextAdvice(int unknown) {
+        if (unknown > 0) {
+            Scenario.Hidden next = scenario.nextUnrevealed();
+            return "まだ話していない条件があります。\n\n"
+                    + "「" + next.question + "」と聞いてください。\n"
+                    + "この話を確認するだけで加点されますし、"
+                    + "確認しないまま設計しても要求を満たしているか判定できません。";
+        }
+        if (current != null && !current.resolved) {
+            List<java.util.Map.Entry<Incident.Cause, Double>> ranked = current.ranked();
+            double top = ranked.get(0).getValue();
+            if (top > 0.8) {
+                return "原因はほぼ絞れています。\n\n"
+                        + "「" + ranked.get(0).getKey().label + "」の可能性が "
+                        + Math.round(top * 100) + "% です。社員に原因を報告させてください。";
+            }
+            Diagnostics.Command suggestion = diagnostics.suggest(current);
+            if (suggestion == null) {
+                return "打てる診断は出し尽くしました。"
+                        + "いちばん確率の高い「" + ranked.get(0).getKey().label + "」で報告してみてください。";
+            }
+            return "まだ原因が絞れていません。\n\n"
+                    + "次は「" + suggestion.label + "」を試してください。\n"
+                    + "この結果なら候補をだいたい半分に割れます。";
+        }
+        Design best = evaluator.bestDesign(scenario);
+        if (design.guestVlan != best.guestVlan) {
+            return best.guestVlan
+                    ? "来客を VLAN で分離してください。図のスイッチか来客端末を押します。\n\n"
+                    + "Firewall のルールでは同じセグメント内の通信は止められません。分離は L2 側の仕事です。"
+                    : "来客の VLAN 分離は不要です。";
+        }
+        if (design.dmz != best.dmz) {
+            return best.dmz
+                    ? "公開する Web サーバーを DMZ に移してください。図のサーバーを押します。\n\n"
+                    + "内部に置いたまま外部公開すると、サーバーが破られた時点で社内が同じ区画にあります。"
+                    : "DMZ は不要です。";
+        }
+        if (design.prefixLength != best.prefixLength) {
+            return "内部サブネットを /" + best.prefixLength + " に変えてください。図の社員PCを押します。\n\n"
+                    + "将来 " + scenario.futureUsers + " 人まで増える計画なので、/26 の 62 台では足りません。"
+                    + "後から広げるとアドレスの振り直しになります。";
+        }
+        if (state.extraCost > 0) {
+            return "構成は最適です。\n\n"
+                    + "ただし稼働後に直したぶんの割増が " + state.extraCost + " 円 残っています。"
+                    + "次の案件では、稼働前に決め切ると同じ点数がもっと安く出せます。";
+        }
+        return "この構成で満点です。\n\n"
+                + "来客は分離済み、公開サーバーは DMZ、将来の台数ぶんのアドレスも確保できています。"
+                + "あとは運用で信頼を落とさないことだけです。";
+    }
+
+    private void normalClientMenu() {
         StringBuilder sb = new StringBuilder();
         sb.append(scenario.client).append('\n');
         sb.append("「").append(scenario.explicitRequirement).append("」\n\n");
@@ -174,17 +508,12 @@ public class MainActivity extends AppCompatActivity {
 
         int unknown = scenario.hidden.size() - scenario.revealedCount();
         if (unknown > 0) {
-            sb.append("\n[ 気づいたこと（未確認 ").append(unknown).append(" 件）]\n");
-            for (Scenario.Hidden h : scenario.hidden) {
-                if (!h.revealed) {
-                    sb.append("・").append(h.hint).append('\n');
-                }
-            }
-            sb.append("\n聞けば要望として確定します");
+            sb.append("\n未確認の要望が ").append(unknown)
+                    .append(" 件あります。現場担当が手がかりを持っています。");
         }
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this)
-                .setTitle("クライアント")
+                .setTitle("依頼者（発注担当）")
                 .setMessage(sb.toString())
                 .setNegativeButton("閉じる", null);
         if (unknown > 0) {
@@ -420,7 +749,11 @@ public class MainActivity extends AppCompatActivity {
                 .append(" / セキュリティ ").append(sign(result.securityScore))
                 .append(" / 拡張性 ").append(sign(result.scalabilityScore))
                 .append(" / コスト ").append(sign(result.costScore)).append('\n');
-        sb.append("案件適合度 ").append(sign(result.fitness()));
+        int max = evaluator.maxFitness(scenario);
+        sb.append("案件適合度 ").append(result.fitness()).append(" / 満点 ").append(max);
+        if (result.fitness() >= max) {
+            sb.append("\n\n満点です。");
+        }
         show("設計レビュー", sb.toString());
     }
 
@@ -445,25 +778,31 @@ public class MainActivity extends AppCompatActivity {
     private void refresh() {
         Incident.Cause active = current != null && !current.resolved ? current.cause : null;
         topology.update(design, active);
-        tvDay.setText("Day " + state.day);
+        tvDay.setText("Day " + state.day + (state.easyMode ? " 簡単" : ""));
         tvTrust.setText("信頼 " + state.trust);
         tvCost.setText("費用 " + (totalCost() / 10000) + "万");
         tvIncident.setText(active == null ? "稼働中" : "障害中");
 
-        int face = R.drawable.chara_normal;
-        if (active != null) {
-            face = R.drawable.chara_worry;
-        }
-        if (state.trust < 35) {
-            face = R.drawable.chara_angry;
-        }
-        charaStaff.setImageResource(face);
+        charaStaff.setImageResource(ally.face(active != null, state.trust));
+        tvAllyName.setText(ally.name);
+        tvAllyRole.setText(ally.role);
+
+        speaker = pickSpeaker();
+        charaPartner.setImageResource(speaker.face(active != null, state.trust));
+        tvPartnerName.setText(speaker.name);
+        tvPartnerRole.setText(speaker.role);
 
         int unknown = scenario.hidden.size() - scenario.revealedCount();
-        if (active != null) {
-            tvHint.setText("図の赤い線が障害箇所です。社員を押して診断してください");
+        if (state.easyMode) {
+            tvHint.setText("依頼者に話しかけると、次にやることを教えてくれます");
+        } else if (active != null) {
+            tvHint.setText("図の赤い線が障害箇所です。社員を押して診断、現場担当を押すと一次情報");
+        } else if (speaker == Stakeholder.BOSS) {
+            tvHint.setText("決裁者が出てきました。押すと金額と信頼への評価が聞けます");
+        } else if (speaker == Stakeholder.INTERN) {
+            tvHint.setText("来客セグメントから社内に届く状態です。インターンを押すと何が起きるか分かります");
         } else if (unknown > 0) {
-            tvHint.setText("クライアントを押すと、まだ聞けていない要望の手がかりが見られます");
+            tvHint.setText("総務担当が手がかりを持っています。見てから依頼者に確認すると確実です");
         } else {
             tvHint.setText("図の機器や配線を押すと設計を変えられます");
         }

@@ -102,6 +102,9 @@ public class Evaluator {
             r.costScore += margin > 300000 ? 20 : 12;
         }
 
+        // 確認できた要求ぶんだけ加点する。聞かないままでは満点にならない。
+        r.requirementScore += scenario.revealedCount() * 5;
+
         int unheard = scenario.hidden.size() - scenario.revealedCount();
         if (unheard > 0) {
             r.findings.add(new Finding("ヒアリング不足", "未確認の要求が " + unheard + " 件あります",
@@ -109,6 +112,39 @@ public class Evaluator {
         }
 
         return r;
+    }
+
+    /** 全組み合わせを総当たりして、この案件で取りうる最良の設計を返す。 */
+    public Design bestDesign(Scenario scenario) {
+        Design best = null;
+        int bestScore = Integer.MIN_VALUE;
+        boolean[] flags = {false, true};
+        int[] prefixes = {24, 26};
+        for (boolean vlan : flags) {
+            for (boolean dmz : flags) {
+                for (boolean deny : flags) {
+                    for (int prefix : prefixes) {
+                        Design candidate = new Design();
+                        candidate.guestVlan = vlan;
+                        candidate.dmz = dmz;
+                        candidate.fwGuestDeny = deny;
+                        candidate.prefixLength = prefix;
+                        int score = evaluate(scenario, candidate, 0).fitness();
+                        if (score > bestScore) {
+                            bestScore = score;
+                            best = candidate;
+                        }
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    /** すべて聞き出し、最良の設計を、割増なしで組んだときの点数。 */
+    public int maxFitness(Scenario scenario) {
+        int unheard = scenario.hidden.size() - scenario.revealedCount();
+        return evaluate(scenario, bestDesign(scenario), 0).fitness() + unheard * 5;
     }
 
     public String describeRules(Design design) {

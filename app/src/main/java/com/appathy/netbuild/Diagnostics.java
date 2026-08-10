@@ -81,6 +81,41 @@ public class Diagnostics {
         }
     }
 
+    /**
+     * いま打つと一番情報が得られるコマンド。
+     * 仮説の確率を正常側と異常側にどれだけ均等に割れるかで選ぶ。
+     */
+    public Command suggest(Incident incident) {
+        Command best = null;
+        double bestSplit = -1;
+        for (Command c : Command.values()) {
+            if (alreadyRun(incident, c)) {
+                continue;
+            }
+            double normalMass = 0;
+            for (Map.Entry<Incident.Cause, Double> e : incident.belief.entrySet()) {
+                if (normal(c, e.getKey())) {
+                    normalMass += e.getValue();
+                }
+            }
+            double split = Math.min(normalMass, 1 - normalMass);
+            if (split > bestSplit) {
+                bestSplit = split;
+                best = c;
+            }
+        }
+        return bestSplit <= 0.001 ? null : best;
+    }
+
+    private boolean alreadyRun(Incident incident, Command command) {
+        for (String entry : incident.log) {
+            if (entry.startsWith(command.label)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public String run(Incident incident, Command command) {
         boolean observed = normal(command, incident.cause);
         update(incident, command, observed);

@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">NetBuild</string>
     <string name="staff_label">自社の社員</string>
-    <string name="client_label">クライアント</string>
+    <string name="client_label">依頼者</string>
 </resources>

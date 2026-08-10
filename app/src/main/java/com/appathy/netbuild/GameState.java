@@ -18,6 +18,7 @@ public class GameState {
     public int day;
     public int trust = 50;
     public int extraCost;
+    public boolean easyMode;
     public final Set<String> occurredFaults = new LinkedHashSet<>();
 
     public void save(Context context, Design design, Scenario scenario, Incident incident) {
@@ -26,6 +27,7 @@ public class GameState {
             root.put("day", day);
             root.put("trust", trust);
             root.put("extraCost", extraCost);
+            root.put("easyMode", easyMode);
             root.put("occurred", new JSONArray(occurredFaults));
 
             JSONObject d = new JSONObject();
@@ -70,6 +72,7 @@ public class GameState {
             day = root.optInt("day");
             trust = root.optInt("trust", 50);
             extraCost = root.optInt("extraCost");
+            easyMode = root.optBoolean("easyMode");
             JSONArray occurred = root.optJSONArray("occurred");
             if (occurred != null) {
                 for (int i = 0; i < occurred.length(); i++) {

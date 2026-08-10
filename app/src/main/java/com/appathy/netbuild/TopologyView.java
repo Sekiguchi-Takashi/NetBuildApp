@@ -26,17 +26,22 @@ public class TopologyView extends View {
         final String id;
         final String label;
         final int iconRes;
-        final float x;
-        final float y;
+        final float portraitX;
+        final float portraitY;
+        final float landscapeX;
+        final float landscapeY;
         float px;
         float py;
 
-        Spot(String id, String label, int iconRes, float x, float y) {
+        Spot(String id, String label, int iconRes,
+             float portraitX, float portraitY, float landscapeX, float landscapeY) {
             this.id = id;
             this.label = label;
             this.iconRes = iconRes;
-            this.x = x;
-            this.y = y;
+            this.portraitX = portraitX;
+            this.portraitY = portraitY;
+            this.landscapeX = landscapeX;
+            this.landscapeY = landscapeY;
         }
     }
 
@@ -78,12 +83,12 @@ public class TopologyView extends View {
         super(context, attrs);
         density = getResources().getDisplayMetrics().density;
 
-        spots.add(new Spot("guest", "来客端末", R.drawable.ic_guest, 0.12f, 0.20f));
-        spots.add(new Spot("pc", "社員PC", R.drawable.ic_pc, 0.12f, 0.76f));
-        spots.add(new Spot("sw", "スイッチ", R.drawable.ic_switch, 0.42f, 0.48f));
-        spots.add(new Spot("fw", "Firewall", R.drawable.node_firewall, 0.70f, 0.48f));
-        spots.add(new Spot("net", "インターネット", R.drawable.ic_cloud, 0.90f, 0.14f));
-        spots.add(new Spot("web", "Webサーバー", R.drawable.ic_server, 0.62f, 0.85f));
+        spots.add(new Spot("guest", "来客端末", R.drawable.ic_guest, 0.14f, 0.16f, 0.08f, 0.22f));
+        spots.add(new Spot("pc", "社員PC", R.drawable.ic_pc, 0.14f, 0.72f, 0.08f, 0.78f));
+        spots.add(new Spot("sw", "スイッチ", R.drawable.ic_switch, 0.44f, 0.44f, 0.34f, 0.50f));
+        spots.add(new Spot("fw", "Firewall", R.drawable.node_firewall, 0.76f, 0.44f, 0.64f, 0.50f));
+        spots.add(new Spot("net", "インターネット", R.drawable.ic_cloud, 0.80f, 0.10f, 0.92f, 0.18f));
+        spots.add(new Spot("web", "Webサーバー", R.drawable.ic_server, 0.60f, 0.82f, 0.44f, 0.88f));
 
         links.add(new Link("guest", "sw", "guest"));
         links.add(new Link("pc", "sw", "internal"));
@@ -124,6 +129,7 @@ public class TopologyView extends View {
         if (event.getAction() != MotionEvent.ACTION_DOWN || listener == null) {
             return super.onTouchEvent(event);
         }
+        layoutSpots();
         float x = event.getX();
         float y = event.getY();
 
@@ -173,15 +179,44 @@ public class TopologyView extends View {
         invalidate();
     }
 
+    /**
+     * 機器の配置。画面いっぱいには広げず、中央に寄せた箱の中に収める。
+     * 箱の最小サイズはタップしやすさのために確保し、最大サイズで広がりすぎを止める。
+     */
+    private void layoutSpots() {
+        int w = getWidth();
+        int h = getHeight();
+        if (w == 0 || h == 0) {
+            return;
+        }
+        boolean landscape = w > h;
+        float margin = 26 * density;
+        float maxW = (landscape ? 660 : 400) * density;
+        float maxH = (landscape ? 330 : 520) * density;
+        float boxW = Math.min(w - margin * 2, maxW);
+        float boxH = Math.min(h - margin * 2, maxH);
+        float left = (w - boxW) / 2f;
+        float top = (h - boxH) / 2f;
+        for (Spot s : spots) {
+            float nx = landscape ? s.landscapeX : s.portraitX;
+            float ny = landscape ? s.landscapeY : s.portraitY;
+            s.px = left + nx * boxW;
+            s.py = top + ny * boxH;
+        }
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        layoutSpots();
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         int w = getWidth();
         int h = getHeight();
-        for (Spot s : spots) {
-            s.px = s.x * w;
-            s.py = s.y * h;
-        }
+        layoutSpots();
 
         drawLink(canvas, "guest", "sw", design.guestVlan ? "#E0B15C" : "#5A6472",
                 cause == Incident.Cause.GUEST_INTRUSION);
@@ -204,8 +239,8 @@ public class TopologyView extends View {
 
         if (design.guestVlan) {
             text.setColor(Color.parseColor("#E0B15C"));
-            canvas.drawText("VLAN 20（来客）", spots.get(0).px + 34 * density,
-                    spots.get(0).py - 26 * density, text);
+            canvas.drawText("VLAN 20（来客）", spots.get(0).px + 40 * density,
+                    spots.get(0).py - 28 * density, text);
             text.setColor(Color.parseColor("#C8D4E0"));
         }
         if (design.dmz) {
@@ -247,7 +282,9 @@ public class TopologyView extends View {
         path.quadTo(midX, midY, to.px, to.py);
         canvas.drawPath(path, danger);
         text.setColor(Color.parseColor("#E5484D"));
-        canvas.drawText(label, midX, midY - 6 * density, text);
+        float labelX = Math.max(text.measureText(label) / 2f + 6 * density,
+                Math.min(getWidth() - text.measureText(label) / 2f - 6 * density, midX));
+        canvas.drawText(label, labelX, midY - 6 * density, text);
         text.setColor(Color.parseColor("#C8D4E0"));
     }
 
@@ -259,6 +296,8 @@ public class TopologyView extends View {
                     (int) (s.px + size / 2f), (int) (s.py + size / 2f));
             icon.draw(canvas);
         }
-        canvas.drawText(s.label, s.px, s.py + size / 2f + 13 * density, text);
+        float labelX = Math.max(text.measureText(s.label) / 2f + 4 * density,
+                Math.min(getWidth() - text.measureText(s.label) / 2f - 4 * density, s.px));
+        canvas.drawText(s.label, labelX, s.py + size / 2f + 13 * density, text);
     }
 }
