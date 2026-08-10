@@ -1,0 +1,188 @@
+package com.appathy.netbuild;
+
+import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.DashPathEffect;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.drawable.Drawable;
+import android.util.AttributeSet;
+import android.view.View;
+
+import androidx.core.content.ContextCompat;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * ステータス盤。設計の選択と障害の状態をそのまま図にする。
+ * 触る場所ではなく、見て分かるための領域。
+ */
+public class TopologyView extends View {
+
+    private static class Spot {
+        final String id;
+        final String label;
+        final int iconRes;
+        final float x;
+        final float y;
+        float px;
+        float py;
+
+        Spot(String id, String label, int iconRes, float x, float y) {
+            this.id = id;
+            this.label = label;
+            this.iconRes = iconRes;
+            this.x = x;
+            this.y = y;
+        }
+    }
+
+    private final List<Spot> spots = new ArrayList<>();
+    private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint danger = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint badge = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    private Design design = new Design();
+    private Incident.Cause cause;
+    private boolean guestReachesInternal;
+    private boolean internetReachesInternal;
+    private boolean blinkOn = true;
+    private float density = 3f;
+
+    public TopologyView(Context context, AttributeSet attrs) {
+        super(context, attrs);
+        density = getResources().getDisplayMetrics().density;
+
+        spots.add(new Spot("guest", "来客端末", R.drawable.ic_guest, 0.12f, 0.20f));
+        spots.add(new Spot("pc", "社員PC", R.drawable.ic_pc, 0.12f, 0.76f));
+        spots.add(new Spot("sw", "スイッチ", R.drawable.ic_switch, 0.42f, 0.48f));
+        spots.add(new Spot("fw", "Firewall", R.drawable.node_firewall, 0.70f, 0.48f));
+        spots.add(new Spot("net", "インターネット", R.drawable.ic_cloud, 0.90f, 0.14f));
+        spots.add(new Spot("web", "Webサーバー", R.drawable.ic_server, 0.62f, 0.85f));
+
+        line.setStyle(Paint.Style.STROKE);
+        line.setStrokeWidth(3f * density);
+        danger.setStyle(Paint.Style.STROKE);
+        danger.setStrokeWidth(3f * density);
+        danger.setColor(Color.parseColor("#E5484D"));
+        danger.setPathEffect(new DashPathEffect(new float[]{8 * density, 6 * density}, 0));
+        text.setColor(Color.parseColor("#C8D4E0"));
+        text.setTextSize(10f * density);
+        text.setTextAlign(Paint.Align.CENTER);
+        badge.setStyle(Paint.Style.FILL);
+
+        postDelayed(blinker, 600);
+    }
+
+    private final Runnable blinker = new Runnable() {
+        public void run() {
+            blinkOn = !blinkOn;
+            if (cause != null) {
+                invalidate();
+            }
+            postDelayed(this, 600);
+        }
+    };
+
+    public void update(Design design, Incident.Cause cause) {
+        this.design = design;
+        this.cause = cause;
+        NetGraph g = design.buildGraph();
+        RuleEngine engine = new RuleEngine(design.buildRules());
+        guestReachesInternal = engine.canReach(g, "guest", "pc").reachable;
+        internetReachesInternal = engine.canReach(g, "net", "pc").reachable;
+        invalidate();
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+        int w = getWidth();
+        int h = getHeight();
+        for (Spot s : spots) {
+            s.px = s.x * w;
+            s.py = s.y * h;
+        }
+
+        drawLink(canvas, "guest", "sw", design.guestVlan ? "#E0B15C" : "#5A6472",
+                cause == Incident.Cause.GUEST_INTRUSION);
+        drawLink(canvas, "pc", "sw", "#5A6472", false);
+        drawLink(canvas, "web", "sw", design.dmz ? "#7FD1B9" : "#5A6472",
+                cause == Incident.Cause.WEB_COMPROMISE);
+        drawLink(canvas, "sw", "fw", "#5A6472", cause == Incident.Cause.LINK_DOWN);
+        drawLink(canvas, "fw", "net", "#5A6472", cause == Incident.Cause.WAN_DOWN);
+
+        if (guestReachesInternal) {
+            drawDanger(canvas, "guest", "pc", "来客→社内 到達");
+        }
+        if (internetReachesInternal) {
+            drawDanger(canvas, "net", "pc", "外部→社内 到達");
+        }
+
+        for (Spot s : spots) {
+            drawSpot(canvas, s);
+        }
+
+        if (design.guestVlan) {
+            text.setColor(Color.parseColor("#E0B15C"));
+            canvas.drawText("VLAN 20（来客）", spots.get(0).px + 34 * density,
+                    spots.get(0).py - 26 * density, text);
+            text.setColor(Color.parseColor("#C8D4E0"));
+        }
+        if (design.dmz) {
+            text.setColor(Color.parseColor("#7FD1B9"));
+            canvas.drawText("DMZ", spots.get(5).px, spots.get(5).py + 40 * density, text);
+            text.setColor(Color.parseColor("#C8D4E0"));
+        }
+    }
+
+    private Spot spot(String id) {
+        for (Spot s : spots) {
+            if (s.id.equals(id)) {
+                return s;
+            }
+        }
+        return spots.get(0);
+    }
+
+    private void drawLink(Canvas canvas, String a, String b, String color, boolean faulty) {
+        Spot from = spot(a);
+        Spot to = spot(b);
+        if (faulty) {
+            line.setColor(blinkOn ? Color.parseColor("#E5484D") : Color.parseColor("#5A2226"));
+            line.setStrokeWidth(4.5f * density);
+        } else {
+            line.setColor(Color.parseColor(color));
+            line.setStrokeWidth(3f * density);
+        }
+        canvas.drawLine(from.px, from.py, to.px, to.py, line);
+    }
+
+    private void drawDanger(Canvas canvas, String a, String b, String label) {
+        Spot from = spot(a);
+        Spot to = spot(b);
+        Path path = new Path();
+        path.moveTo(from.px, from.py);
+        float midX = (from.px + to.px) / 2f - 26 * density;
+        float midY = (from.py + to.py) / 2f;
+        path.quadTo(midX, midY, to.px, to.py);
+        canvas.drawPath(path, danger);
+        text.setColor(Color.parseColor("#E5484D"));
+        canvas.drawText(label, midX, midY - 6 * density, text);
+        text.setColor(Color.parseColor("#C8D4E0"));
+    }
+
+    private void drawSpot(Canvas canvas, Spot s) {
+        int size = (int) (34 * density);
+        Drawable icon = ContextCompat.getDrawable(getContext(), s.iconRes);
+        if (icon != null) {
+            icon.setBounds((int) (s.px - size / 2f), (int) (s.py - size / 2f),
+                    (int) (s.px + size / 2f), (int) (s.py + size / 2f));
+            icon.draw(canvas);
+        }
+        canvas.drawText(s.label, s.px, s.py + size / 2f + 13 * density, text);
+    }
+}

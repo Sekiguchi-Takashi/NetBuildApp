@@ -7,6 +7,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
+import android.widget.ImageView;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -34,6 +35,18 @@ public class MainActivity extends AppCompatActivity {
     private Incident current;
     private boolean loading = true;
 
+    private TopologyView topology;
+    private ImageView charaSmall;
+    private ImageView chara;
+    private TextView tvDay;
+    private TextView tvTrust;
+    private TextView tvCost;
+    private TextView tvIncident;
+    private TextView tvBubble;
+    private View panelDesign;
+    private View panelClient;
+    private View panelOps;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -45,6 +58,17 @@ public class MainActivity extends AppCompatActivity {
         cbDmz = findViewById(R.id.cb_dmz);
         cbDeny = findViewById(R.id.cb_deny);
         cbWideSubnet = findViewById(R.id.cb_subnet);
+        topology = findViewById(R.id.topology);
+        charaSmall = findViewById(R.id.chara_small);
+        chara = findViewById(R.id.chara);
+        tvDay = findViewById(R.id.tv_day);
+        tvTrust = findViewById(R.id.tv_trust);
+        tvCost = findViewById(R.id.tv_cost);
+        tvIncident = findViewById(R.id.tv_incident);
+        tvBubble = findViewById(R.id.tv_bubble);
+        panelDesign = findViewById(R.id.panel_design);
+        panelClient = findViewById(R.id.panel_client);
+        panelOps = findViewById(R.id.panel_ops);
 
         current = state.load(this, design, scenario);
 
@@ -101,6 +125,22 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        bind(R.id.tab_design, new Runnable() {
+            public void run() {
+                showPanel(0);
+            }
+        });
+        bind(R.id.tab_client, new Runnable() {
+            public void run() {
+                showPanel(1);
+            }
+        });
+        bind(R.id.tab_ops, new Runnable() {
+            public void run() {
+                showPanel(2);
+            }
+        });
+
         findViewById(R.id.btn_brief).setOnLongClickListener(new View.OnLongClickListener() {
             public boolean onLongClick(View v) {
                 confirmReset();
@@ -108,9 +148,39 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        refresh();
         if (!handleSharedJson(getIntent())) {
             showBrief();
         }
+    }
+
+    private void showPanel(int index) {
+        panelDesign.setVisibility(index == 0 ? View.VISIBLE : View.GONE);
+        panelClient.setVisibility(index == 1 ? View.VISIBLE : View.GONE);
+        panelOps.setVisibility(index == 2 ? View.VISIBLE : View.GONE);
+    }
+
+    /** ステータス盤の更新。設計と障害の状態をそのまま図と帯に反映する。 */
+    private void refresh() {
+        Incident.Cause active = current != null && !current.resolved ? current.cause : null;
+        topology.update(design, active);
+        tvDay.setText("Day " + state.day);
+        tvTrust.setText("信頼 " + state.trust);
+        tvCost.setText("費用 " + (totalCost() / 10000) + "万");
+        tvIncident.setText(active == null ? "稼働中" : "障害中");
+        int face = R.drawable.chara_normal;
+        if (active != null) {
+            face = R.drawable.chara_worry;
+        }
+        if (state.trust < 35) {
+            face = R.drawable.chara_angry;
+        }
+        charaSmall.setImageResource(face);
+        chara.setImageResource(face);
+    }
+
+    private void say(String line) {
+        tvBubble.setText(line);
     }
 
     private void bind(int id, final Runnable action) {
@@ -216,6 +286,7 @@ public class MainActivity extends AppCompatActivity {
             sb.append("  過去に設計起因の障害 ").append(state.occurredFaults.size()).append(" 種\n");
         }
         sb.append("\n  （案件ボタンを長押しで最初からやり直せます）\n");
+        say("「" + scenario.explicitRequirement + "」");
         print(sb.toString());
     }
 
@@ -226,6 +297,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         next.revealed = true;
+        say("「" + next.answer + "」");
         save();
         StringBuilder sb = new StringBuilder("ヒアリング\n");
         sb.append("  あなた: ").append(next.question).append('\n');
@@ -246,6 +318,11 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         current = incidents.nextDay(state.day, scenario, design, state.occurredFaults);
+        if (current != null) {
+            say("「" + current.cause.symptom + "」");
+        } else {
+            say("「今日は問題なく使えています」");
+        }
         if (current == null) {
             state.trust = Math.min(100, state.trust + 2);
             save();
@@ -376,6 +453,7 @@ public class MainActivity extends AppCompatActivity {
                         cbDeny.setChecked(false);
                         cbWideSubnet.setChecked(false);
                         loading = false;
+                        refresh();
                         showBrief();
                     }
                 })
@@ -384,6 +462,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void save() {
         state.save(this, design, scenario, current);
+        refresh();
     }
 
     private String sign(int value) {

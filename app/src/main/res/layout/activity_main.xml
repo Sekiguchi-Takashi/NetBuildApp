@@ -3,124 +3,271 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#12100C"
-    android:padding="12dp">
+    android:background="#12100C">
 
-    <TextView
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="5"
+        android:background="#171B21">
+
+        <com.appathy.netbuild.TopologyView
+            android:id="@+id/topology"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <ImageView
+            android:id="@+id/chara_small"
+            android:layout_width="52dp"
+            android:layout_height="120dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="6dp"
+            android:contentDescription="@string/app_name"
+            android:scaleType="fitEnd"
+            android:src="@drawable/chara_normal" />
+    </FrameLayout>
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/app_name"
-        android:textColor="#E0B15C"
-        android:textSize="18sp"
-        android:fontFamily="monospace"
-        android:paddingBottom="8dp" />
+        android:orientation="horizontal"
+        android:background="#0D1117"
+        android:padding="6dp">
 
-    <HorizontalScrollView
+        <TextView
+            android:id="@+id/tv_day"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="monospace"
+            android:textSize="12sp"
+            android:textColor="#C8D4E0" />
+
+        <TextView
+            android:id="@+id/tv_trust"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="monospace"
+            android:textSize="12sp"
+            android:textColor="#7FD1B9" />
+
+        <TextView
+            android:id="@+id/tv_cost"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.4"
+            android:fontFamily="monospace"
+            android:textSize="12sp"
+            android:textColor="#E0B15C" />
+
+        <TextView
+            android:id="@+id/tv_incident"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="monospace"
+            android:textSize="12sp"
+            android:textColor="#E5484D" />
+    </LinearLayout>
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:scrollbars="none">
+        android:orientation="horizontal"
+        android:padding="4dp">
+
+        <Button
+            android:id="@+id/tab_design"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textSize="12sp"
+            android:text="@string/tab_design" />
+
+        <Button
+            android:id="@+id/tab_client"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:textSize="12sp"
+            android:text="@string/tab_client" />
+
+        <Button
+            android:id="@+id/tab_ops"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:textSize="12sp"
+            android:text="@string/tab_ops" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp">
 
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:id="@+id/panel_design"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:orientation="vertical">
 
             <CheckBox
                 android:id="@+id/cb_vlan"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="#D6DEE8"
+                android:textSize="13sp"
                 android:text="@string/cb_vlan" />
 
             <CheckBox
                 android:id="@+id/cb_dmz"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="#D6DEE8"
+                android:textSize="13sp"
                 android:text="@string/cb_dmz" />
 
             <CheckBox
                 android:id="@+id/cb_deny"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="#D6DEE8"
+                android:textSize="13sp"
                 android:text="@string/cb_deny" />
 
             <CheckBox
                 android:id="@+id/cb_subnet"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="#D6DEE8"
+                android:textSize="13sp"
                 android:text="@string/cb_subnet" />
-        </LinearLayout>
-    </HorizontalScrollView>
 
-    <HorizontalScrollView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:scrollbars="none">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btn_rules"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textSize="12sp"
+                    android:text="@string/btn_rules" />
+
+                <Button
+                    android:id="@+id/btn_review"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="6dp"
+                    android:textSize="12sp"
+                    android:text="@string/btn_review" />
+            </LinearLayout>
+        </LinearLayout>
 
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:id="@+id/panel_client"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:visibility="gone">
 
-            <Button
-                android:id="@+id/btn_brief"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/btn_brief" />
+            <ImageView
+                android:id="@+id/chara"
+                android:layout_width="80dp"
+                android:layout_height="150dp"
+                android:contentDescription="@string/app_name"
+                android:scaleType="fitCenter"
+                android:src="@drawable/chara_normal" />
 
-            <Button
-                android:id="@+id/btn_ask"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="@string/btn_ask" />
+                android:layout_weight="1"
+                android:orientation="vertical">
 
-            <Button
-                android:id="@+id/btn_rules"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="@string/btn_rules" />
+                <TextView
+                    android:id="@+id/tv_bubble"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="#1E252E"
+                    android:padding="10dp"
+                    android:textSize="13sp"
+                    android:textColor="#D6DEE8" />
 
-            <Button
-                android:id="@+id/btn_review"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="@string/btn_review" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btn_brief"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textSize="12sp"
+                        android:text="@string/btn_brief" />
+
+                    <Button
+                        android:id="@+id/btn_ask"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="6dp"
+                        android:textSize="12sp"
+                        android:text="@string/btn_ask" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/panel_ops"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:visibility="gone">
 
             <Button
                 android:id="@+id/btn_next"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:textSize="12sp"
                 android:text="@string/btn_next" />
 
             <Button
                 android:id="@+id/btn_diag"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:textSize="12sp"
                 android:text="@string/btn_diag" />
 
             <Button
                 android:id="@+id/btn_answer"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:textSize="12sp"
                 android:text="@string/btn_answer" />
         </LinearLayout>
-    </HorizontalScrollView>
+    </FrameLayout>
 
     <ScrollView
         android:id="@+id/scroller"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="8dp">
+        android:layout_weight="4"
+        android:padding="8dp">
 
         <HorizontalScrollView
             android:layout_width="match_parent"
