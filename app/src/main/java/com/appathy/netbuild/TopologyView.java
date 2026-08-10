@@ -8,6 +8,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
+import android.view.MotionEvent;
 import android.view.View;
 
 import androidx.core.content.ContextCompat;
@@ -39,7 +40,28 @@ public class TopologyView extends View {
         }
     }
 
+    /** 図の中の配線。触れる対象なので保持する。 */
+    private static class Link {
+        final String a;
+        final String b;
+        final String kind;
+
+        Link(String a, String b, String kind) {
+            this.a = a;
+            this.b = b;
+            this.kind = kind;
+        }
+    }
+
+    public interface OnPickListener {
+        void onNodePicked(String id);
+
+        void onLinkPicked(String a, String b, String kind);
+    }
+
     private final List<Spot> spots = new ArrayList<>();
+    private final List<Link> links = new ArrayList<>();
+    private OnPickListener listener;
     private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint danger = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -62,6 +84,12 @@ public class TopologyView extends View {
         spots.add(new Spot("fw", "Firewall", R.drawable.node_firewall, 0.70f, 0.48f));
         spots.add(new Spot("net", "インターネット", R.drawable.ic_cloud, 0.90f, 0.14f));
         spots.add(new Spot("web", "Webサーバー", R.drawable.ic_server, 0.62f, 0.85f));
+
+        links.add(new Link("guest", "sw", "guest"));
+        links.add(new Link("pc", "sw", "internal"));
+        links.add(new Link("web", "sw", "server"));
+        links.add(new Link("sw", "fw", "uplink"));
+        links.add(new Link("fw", "net", "wan"));
 
         line.setStyle(Paint.Style.STROKE);
         line.setStrokeWidth(3f * density);
@@ -86,6 +114,54 @@ public class TopologyView extends View {
             postDelayed(this, 600);
         }
     };
+
+    public void setOnPickListener(OnPickListener listener) {
+        this.listener = listener;
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if (event.getAction() != MotionEvent.ACTION_DOWN || listener == null) {
+            return super.onTouchEvent(event);
+        }
+        float x = event.getX();
+        float y = event.getY();
+
+        for (Spot s : spots) {
+            if (Math.hypot(x - s.px, y - s.py) < 30 * density) {
+                performClick();
+                listener.onNodePicked(s.id);
+                return true;
+            }
+        }
+        for (Link l : links) {
+            Spot a = spot(l.a);
+            Spot b = spot(l.b);
+            if (distanceToSegment(x, y, a.px, a.py, b.px, b.py) < 18 * density) {
+                performClick();
+                listener.onLinkPicked(l.a, l.b, l.kind);
+                return true;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    public boolean performClick() {
+        return super.performClick();
+    }
+
+    private float distanceToSegment(float px, float py, float x1, float y1, float x2, float y2) {
+        float dx = x2 - x1;
+        float dy = y2 - y1;
+        float lengthSq = dx * dx + dy * dy;
+        if (lengthSq == 0) {
+            return (float) Math.hypot(px - x1, py - y1);
+        }
+        float t = ((px - x1) * dx + (py - y1) * dy) / lengthSq;
+        t = Math.max(0, Math.min(1, t));
+        return (float) Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+    }
 
     public void update(Design design, Incident.Cause cause) {
         this.design = design;
