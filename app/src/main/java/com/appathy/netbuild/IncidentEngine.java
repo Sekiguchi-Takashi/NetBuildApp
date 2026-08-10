@@ -3,6 +3,7 @@ package com.appathy.netbuild;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 /**
  * 設計の弱点を種にして障害を起こす。
@@ -31,7 +32,7 @@ public class IncidentEngine {
     }
 
     /** 1日進めたときに障害が起きるかどうか。起きなければ null。 */
-    public Incident nextDay(int day, Scenario scenario, Design design) {
+    public Incident nextDay(int day, Scenario scenario, Design design, Set<String> occurredFaults) {
         List<Incident.Cause> candidates = candidates(scenario, design);
         if (random.nextInt(100) >= 45) {
             return null;
@@ -42,13 +43,18 @@ public class IncidentEngine {
             if (isWeaknessCause(c)) {
                 weighted.add(c);
                 weighted.add(c);
+                if (occurredFaults.contains(c.name())) {
+                    weighted.add(c);
+                    weighted.add(c);
+                    weighted.add(c);
+                }
             }
         }
         Incident.Cause picked = weighted.get(random.nextInt(weighted.size()));
         return new Incident(picked, day, candidates);
     }
 
-    private boolean isWeaknessCause(Incident.Cause c) {
+    public boolean isWeaknessCause(Incident.Cause c) {
         return c == Incident.Cause.IP_EXHAUSTED
                 || c == Incident.Cause.GUEST_INTRUSION
                 || c == Incident.Cause.WEB_COMPROMISE;

@@ -31,11 +31,11 @@ public class Evaluator {
         }
     }
 
-    public Result evaluate(Scenario scenario, Design design) {
+    public Result evaluate(Scenario scenario, Design design, int extraCost) {
         NetGraph g = design.buildGraph();
         RuleEngine engine = new RuleEngine(design.buildRules());
         Result r = new Result();
-        r.cost = design.cost();
+        r.cost = design.cost() + extraCost;
 
         RuleEngine.Path guestToInternal = engine.canReach(g, "guest", "pc");
         RuleEngine.Path guestToInternet = engine.canReach(g, "guest", "net");
@@ -94,7 +94,8 @@ public class Evaluator {
 
         if (r.cost > scenario.budget) {
             r.findings.add(new Finding("予算超過", "予算を超えています",
-                    "BudgetOverrun。差額 " + (r.cost - scenario.budget) + " 円。減らす項目を顧客と交渉してください"));
+                    "BudgetOverrun。差額 " + (r.cost - scenario.budget) + " 円"
+                            + (extraCost > 0 ? "（うち後追い改修の割増 " + extraCost + " 円）" : "")));
             r.costScore -= 25;
         } else {
             int margin = scenario.budget - r.cost;

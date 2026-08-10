@@ -22,10 +22,7 @@ public class MainActivity extends AppCompatActivity {
     private final Evaluator evaluator = new Evaluator();
     private final IncidentEngine incidents = new IncidentEngine();
     private final Diagnostics diagnostics = new Diagnostics();
-
-    private int day = 0;
-    private int trust = 50;
-    private Incident current;
+    private final GameState state = new GameState();
 
     private TextView console;
     private ScrollView scroller;
@@ -33,6 +30,9 @@ public class MainActivity extends AppCompatActivity {
     private CheckBox cbDmz;
     private CheckBox cbDeny;
     private CheckBox cbWideSubnet;
+
+    private Incident current;
+    private boolean loading = true;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,12 +46,18 @@ public class MainActivity extends AppCompatActivity {
         cbDeny = findViewById(R.id.cb_deny);
         cbWideSubnet = findViewById(R.id.cb_subnet);
 
+        current = state.load(this, design, scenario);
+
+        loading = true;
+        cbVlan.setChecked(design.guestVlan);
+        cbDmz.setChecked(design.dmz);
+        cbDeny.setChecked(design.fwGuestDeny);
+        cbWideSubnet.setChecked(design.prefixLength <= 24);
+        loading = false;
+
         CompoundButton.OnCheckedChangeListener sync = new CompoundButton.OnCheckedChangeListener() {
             public void onCheckedChanged(CompoundButton button, boolean checked) {
-                design.guestVlan = cbVlan.isChecked();
-                design.dmz = cbDmz.isChecked();
-                design.fwGuestDeny = cbDeny.isChecked();
-                design.prefixLength = cbWideSubnet.isChecked() ? 24 : 26;
+                applyDesignChange();
             }
         };
         cbVlan.setOnCheckedChangeListener(sync);
@@ -59,45 +65,86 @@ public class MainActivity extends AppCompatActivity {
         cbDeny.setOnCheckedChangeListener(sync);
         cbWideSubnet.setOnCheckedChangeListener(sync);
 
-        ((Button) findViewById(R.id.btn_brief)).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
+        bind(R.id.btn_brief, new Runnable() {
+            public void run() {
                 showBrief();
             }
         });
-        ((Button) findViewById(R.id.btn_ask)).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
+        bind(R.id.btn_ask, new Runnable() {
+            public void run() {
                 askClient();
             }
         });
-        ((Button) findViewById(R.id.btn_rules)).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
+        bind(R.id.btn_rules, new Runnable() {
+            public void run() {
                 print(evaluator.describeRules(design));
             }
         });
-        ((Button) findViewById(R.id.btn_review)).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
+        bind(R.id.btn_review, new Runnable() {
+            public void run() {
                 runReview();
             }
         });
-        ((Button) findViewById(R.id.btn_next)).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
+        bind(R.id.btn_next, new Runnable() {
+            public void run() {
                 advanceDay();
             }
         });
-        ((Button) findViewById(R.id.btn_diag)).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
+        bind(R.id.btn_diag, new Runnable() {
+            public void run() {
                 chooseCommand();
             }
         });
-        ((Button) findViewById(R.id.btn_answer)).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
+        bind(R.id.btn_answer, new Runnable() {
+            public void run() {
                 chooseCause();
+            }
+        });
+
+        findViewById(R.id.btn_brief).setOnLongClickListener(new View.OnLongClickListener() {
+            public boolean onLongClick(View v) {
+                confirmReset();
+                return true;
             }
         });
 
         if (!handleSharedJson(getIntent())) {
             showBrief();
         }
+    }
+
+    private void bind(int id, final Runnable action) {
+        findViewById(id).setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                action.run();
+            }
+        });
+    }
+
+    /** 稼働開始後の設計変更は割増になる。後から直すほど高くつく。 */
+    private void applyDesignChange() {
+        if (loading) {
+            return;
+        }
+        int before = design.cost();
+        design.guestVlan = cbVlan.isChecked();
+        design.dmz = cbDmz.isChecked();
+        design.fwGuestDeny = cbDeny.isChecked();
+        design.prefixLength = cbWideSubnet.isChecked() ? 24 : 26;
+        int after = design.cost();
+
+        if (state.day > 0 && after > before) {
+            int surcharge = (after - before) / 2;
+            state.extraCost += surcharge;
+            print("設計変更（稼働中）\n  " + design.summary()
+                    + "\n\n  稼働後の改修のため割増 " + surcharge + " 円が発生\n"
+                    + "  累計 " + totalCost() + " 円 / 予算 " + scenario.budget + " 円\n");
+        }
+        save();
+    }
+
+    private int totalCost() {
+        return design.cost() + state.extraCost;
     }
 
     @Override
@@ -155,9 +202,20 @@ public class MainActivity extends AppCompatActivity {
         if (unknown > 0) {
             sb.append("  UNKNOWN    未確認 ").append(unknown).append(" 件\n");
         }
-        sb.append('\n').append("現在の設計\n  ").append(design.summary())
-                .append("\n  概算 ").append(design.cost()).append(" 円\n");
-        sb.append("\n運用  Day ").append(day).append(" / 信頼 ").append(trust).append("\n");
+        sb.append("\n現在の設計\n  ").append(design.summary()).append('\n');
+        sb.append("  費用 ").append(totalCost()).append(" 円");
+        if (state.extraCost > 0) {
+            sb.append("（後追い改修の割増 ").append(state.extraCost).append(" 円を含む）");
+        }
+        sb.append('\n');
+        sb.append("\n運用  Day ").append(state.day).append(" / 信頼 ").append(state.trust).append('\n');
+        if (current != null && !current.resolved) {
+            sb.append("  対応中の障害があります\n");
+        }
+        if (!state.occurredFaults.isEmpty()) {
+            sb.append("  過去に設計起因の障害 ").append(state.occurredFaults.size()).append(" 種\n");
+        }
+        sb.append("\n  （案件ボタンを長押しで最初からやり直せます）\n");
         print(sb.toString());
     }
 
@@ -168,6 +226,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         next.revealed = true;
+        save();
         StringBuilder sb = new StringBuilder("ヒアリング\n");
         sb.append("  あなた: ").append(next.question).append('\n');
         sb.append("  顧客  : ").append(next.answer).append("\n\n");
@@ -178,20 +237,27 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void advanceDay() {
-        day++;
+        state.day++;
         if (current != null && !current.resolved) {
-            trust -= 5;
-            print("Day " + day + "\n  障害が未解決のままです。顧客の信頼が下がりました（信頼 "
-                    + trust + "）\n\n" + symptomBlock());
+            state.trust -= 5;
+            save();
+            print("Day " + state.day + "\n  障害が未解決のままです。顧客の信頼が下がりました（信頼 "
+                    + state.trust + "）\n\n" + symptomBlock());
             return;
         }
-        current = incidents.nextDay(day, scenario, design);
+        current = incidents.nextDay(state.day, scenario, design, state.occurredFaults);
         if (current == null) {
-            trust = Math.min(100, trust + 2);
-            print("Day " + day + "\n  障害なし。安定して稼働しています（信頼 " + trust + "）\n");
+            state.trust = Math.min(100, state.trust + 2);
+            save();
+            print("Day " + state.day + "\n  障害なし。安定して稼働しています（信頼 " + state.trust + "）\n");
             return;
         }
-        print("Day " + day + "  障害発生\n\n" + symptomBlock()
+        boolean repeat = incidents.isWeaknessCause(current.cause)
+                && state.occurredFaults.contains(current.cause.name());
+        save();
+        print("Day " + state.day + (repeat ? "  障害発生（再発）" : "  障害発生") + "\n\n"
+                + symptomBlock()
+                + (repeat ? "\n  前と同じ症状です。設計を直していないので繰り返しています\n" : "")
                 + "\n  「診断」で調べ、「原因回答」で答えてください\n");
     }
 
@@ -217,7 +283,9 @@ public class MainActivity extends AppCompatActivity {
                 .setTitle("診断コマンド")
                 .setItems(labels, new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int which) {
-                        print(diagnostics.run(current, commands[which]));
+                        String text = diagnostics.run(current, commands[which]);
+                        save();
+                        print(text);
                     }
                 })
                 .show();
@@ -248,31 +316,28 @@ public class MainActivity extends AppCompatActivity {
         if (answer == current.cause) {
             current.resolved = true;
             int bonus = Math.max(4, 20 - current.log.size() * 3);
-            trust = Math.min(100, trust + bonus);
+            state.trust = Math.min(100, state.trust + bonus);
             sb.append("正解  ").append(current.cause.label).append('\n');
             sb.append("  対処: ").append(current.cause.fix).append('\n');
             sb.append("  診断 ").append(current.log.size()).append(" 回で特定（信頼 +")
-                    .append(bonus).append(" → ").append(trust).append("）\n");
-            if (isDesignFault(current.cause)) {
-                sb.append("\n  この障害は設計の弱点が原因です。設計を直さない限り再発します\n");
+                    .append(bonus).append(" → ").append(state.trust).append("）\n");
+            if (incidents.isWeaknessCause(current.cause)) {
+                state.occurredFaults.add(current.cause.name());
+                sb.append("\n  この障害は設計の弱点が原因です\n");
+                sb.append("  設計を直さない限り再発率が上がります。直す場合は稼働後の割増がかかります\n");
             }
         } else {
-            trust -= 8;
+            state.trust -= 8;
             sb.append("不正解  実際の原因は別にあります\n");
-            sb.append("  誤った対処は状況を悪化させます（信頼 ").append(trust).append("）\n\n");
+            sb.append("  誤った対処は状況を悪化させます（信頼 ").append(state.trust).append("）\n\n");
             sb.append(current.describeBelief());
         }
+        save();
         print(sb.toString());
     }
 
-    private boolean isDesignFault(Incident.Cause cause) {
-        return cause == Incident.Cause.IP_EXHAUSTED
-                || cause == Incident.Cause.GUEST_INTRUSION
-                || cause == Incident.Cause.WEB_COMPROMISE;
-    }
-
     private void runReview() {
-        Evaluator.Result result = evaluator.evaluate(scenario, design);
+        Evaluator.Result result = evaluator.evaluate(scenario, design, state.extraCost);
         StringBuilder sb = new StringBuilder("設計レビュー\n  ").append(design.summary()).append("\n\n");
         for (Evaluator.Finding f : result.findings) {
             sb.append("  [").append(f.level).append("] ").append(f.title).append('\n');
@@ -287,6 +352,38 @@ public class MainActivity extends AppCompatActivity {
         sb.append("  ------------------------\n");
         sb.append("  案件適合度 ").append(sign(result.fitness())).append('\n');
         print(sb.toString());
+    }
+
+    private void confirmReset() {
+        new AlertDialog.Builder(this)
+                .setTitle("最初からやり直しますか")
+                .setMessage("Day・信頼・設計・障害の記録がすべて消えます")
+                .setNegativeButton("やめる", null)
+                .setPositiveButton("やり直す", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        state.reset(MainActivity.this);
+                        current = null;
+                        for (Scenario.Hidden h : scenario.hidden) {
+                            h.revealed = false;
+                        }
+                        design.guestVlan = false;
+                        design.dmz = false;
+                        design.fwGuestDeny = false;
+                        design.prefixLength = 26;
+                        loading = true;
+                        cbVlan.setChecked(false);
+                        cbDmz.setChecked(false);
+                        cbDeny.setChecked(false);
+                        cbWideSubnet.setChecked(false);
+                        loading = false;
+                        showBrief();
+                    }
+                })
+                .show();
+    }
+
+    private void save() {
+        state.save(this, design, scenario, current);
     }
 
     private String sign(int value) {
