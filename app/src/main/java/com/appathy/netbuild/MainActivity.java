@@ -1,5 +1,6 @@
 package com.appathy.netbuild;
 
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
@@ -9,6 +10,7 @@ import android.widget.CompoundButton;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.util.List;
@@ -18,6 +20,12 @@ public class MainActivity extends AppCompatActivity {
     private final Scenario scenario = Scenario.office();
     private final Design design = new Design();
     private final Evaluator evaluator = new Evaluator();
+    private final IncidentEngine incidents = new IncidentEngine();
+    private final Diagnostics diagnostics = new Diagnostics();
+
+    private int day = 0;
+    private int trust = 50;
+    private Incident current;
 
     private TextView console;
     private ScrollView scroller;
@@ -69,6 +77,21 @@ public class MainActivity extends AppCompatActivity {
         ((Button) findViewById(R.id.btn_review)).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 runReview();
+            }
+        });
+        ((Button) findViewById(R.id.btn_next)).setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                advanceDay();
+            }
+        });
+        ((Button) findViewById(R.id.btn_diag)).setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                chooseCommand();
+            }
+        });
+        ((Button) findViewById(R.id.btn_answer)).setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                chooseCause();
             }
         });
 
@@ -134,6 +157,7 @@ public class MainActivity extends AppCompatActivity {
         }
         sb.append('\n').append("現在の設計\n  ").append(design.summary())
                 .append("\n  概算 ").append(design.cost()).append(" 円\n");
+        sb.append("\n運用  Day ").append(day).append(" / 信頼 ").append(trust).append("\n");
         print(sb.toString());
     }
 
@@ -151,6 +175,100 @@ public class MainActivity extends AppCompatActivity {
         int rest = scenario.hidden.size() - scenario.revealedCount();
         sb.append("  残りの未確認: ").append(rest).append(" 件\n");
         print(sb.toString());
+    }
+
+    private void advanceDay() {
+        day++;
+        if (current != null && !current.resolved) {
+            trust -= 5;
+            print("Day " + day + "\n  障害が未解決のままです。顧客の信頼が下がりました（信頼 "
+                    + trust + "）\n\n" + symptomBlock());
+            return;
+        }
+        current = incidents.nextDay(day, scenario, design);
+        if (current == null) {
+            trust = Math.min(100, trust + 2);
+            print("Day " + day + "\n  障害なし。安定して稼働しています（信頼 " + trust + "）\n");
+            return;
+        }
+        print("Day " + day + "  障害発生\n\n" + symptomBlock()
+                + "\n  「診断」で調べ、「原因回答」で答えてください\n");
+    }
+
+    private String symptomBlock() {
+        if (current == null) {
+            return "";
+        }
+        return "  顧客からの連絡\n  「" + current.cause.symptom + "」\n\n"
+                + current.describeBelief();
+    }
+
+    private void chooseCommand() {
+        if (current == null || current.resolved) {
+            print("対応中の障害はありません。「翌日へ」で日を進めてください。");
+            return;
+        }
+        final Diagnostics.Command[] commands = Diagnostics.Command.values();
+        String[] labels = new String[commands.length];
+        for (int i = 0; i < commands.length; i++) {
+            labels[i] = commands[i].label;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("診断コマンド")
+                .setItems(labels, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        print(diagnostics.run(current, commands[which]));
+                    }
+                })
+                .show();
+    }
+
+    private void chooseCause() {
+        if (current == null || current.resolved) {
+            print("対応中の障害はありません。");
+            return;
+        }
+        final List<Incident.Cause> candidates = incidents.candidates(scenario, design);
+        String[] labels = new String[candidates.size()];
+        for (int i = 0; i < candidates.size(); i++) {
+            labels[i] = candidates.get(i).label;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("原因はどれですか")
+                .setItems(labels, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        answerCause(candidates.get(which));
+                    }
+                })
+                .show();
+    }
+
+    private void answerCause(Incident.Cause answer) {
+        StringBuilder sb = new StringBuilder();
+        if (answer == current.cause) {
+            current.resolved = true;
+            int bonus = Math.max(4, 20 - current.log.size() * 3);
+            trust = Math.min(100, trust + bonus);
+            sb.append("正解  ").append(current.cause.label).append('\n');
+            sb.append("  対処: ").append(current.cause.fix).append('\n');
+            sb.append("  診断 ").append(current.log.size()).append(" 回で特定（信頼 +")
+                    .append(bonus).append(" → ").append(trust).append("）\n");
+            if (isDesignFault(current.cause)) {
+                sb.append("\n  この障害は設計の弱点が原因です。設計を直さない限り再発します\n");
+            }
+        } else {
+            trust -= 8;
+            sb.append("不正解  実際の原因は別にあります\n");
+            sb.append("  誤った対処は状況を悪化させます（信頼 ").append(trust).append("）\n\n");
+            sb.append(current.describeBelief());
+        }
+        print(sb.toString());
+    }
+
+    private boolean isDesignFault(Incident.Cause cause) {
+        return cause == Incident.Cause.IP_EXHAUSTED
+                || cause == Incident.Cause.GUEST_INTRUSION
+                || cause == Incident.Cause.WEB_COMPROMISE;
     }
 
     private void runReview() {

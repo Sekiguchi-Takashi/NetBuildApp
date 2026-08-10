@@ -5,6 +5,9 @@
     <string name="btn_ask">ヒアリング</string>
     <string name="btn_rules">FWルール</string>
     <string name="btn_review">設計レビュー</string>
+    <string name="btn_next">翌日へ</string>
+    <string name="btn_diag">診断</string>
+    <string name="btn_answer">原因回答</string>
     <string name="cb_vlan">来客VLAN分離</string>
     <string name="cb_dmz">DMZ</string>
     <string name="cb_deny">来客Deny</string>
