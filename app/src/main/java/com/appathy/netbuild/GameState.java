@@ -19,6 +19,8 @@ public class GameState {
     public int trust = 50;
     public int extraCost;
     public boolean easyMode;
+    public int extraBudget;
+    public int negotiations;
     public final Set<String> occurredFaults = new LinkedHashSet<>();
 
     public void save(Context context, Design design, Scenario scenario, Incident incident) {
@@ -28,6 +30,8 @@ public class GameState {
             root.put("trust", trust);
             root.put("extraCost", extraCost);
             root.put("easyMode", easyMode);
+            root.put("extraBudget", extraBudget);
+            root.put("negotiations", negotiations);
             root.put("occurred", new JSONArray(occurredFaults));
 
             JSONObject d = new JSONObject();
@@ -36,6 +40,7 @@ public class GameState {
             d.put("fwGuestDeny", design.fwGuestDeny);
             d.put("dnsRedundant", design.dnsRedundant);
             d.put("serverSharedWithWeb", design.serverSharedWithWeb);
+            d.put("proxy", design.proxy);
             d.put("prefixLength", design.prefixLength);
             root.put("design", d);
 
@@ -75,6 +80,8 @@ public class GameState {
             trust = root.optInt("trust", 50);
             extraCost = root.optInt("extraCost");
             easyMode = root.optBoolean("easyMode");
+            extraBudget = root.optInt("extraBudget");
+            negotiations = root.optInt("negotiations");
             JSONArray occurred = root.optJSONArray("occurred");
             if (occurred != null) {
                 for (int i = 0; i < occurred.length(); i++) {
@@ -88,6 +95,7 @@ public class GameState {
                 design.fwGuestDeny = d.optBoolean("fwGuestDeny");
                 design.dnsRedundant = d.optBoolean("dnsRedundant");
                 design.serverSharedWithWeb = d.optBoolean("serverSharedWithWeb", true);
+                design.proxy = d.optBoolean("proxy");
                 design.prefixLength = d.optInt("prefixLength", 26);
             }
             JSONArray revealed = root.optJSONArray("revealed");
@@ -146,6 +154,8 @@ public class GameState {
         day = 0;
         trust = 50;
         extraCost = 0;
+        extraBudget = 0;
+        negotiations = 0;
         occurredFaults.clear();
     }
 

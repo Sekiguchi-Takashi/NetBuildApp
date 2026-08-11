@@ -33,6 +33,7 @@ public class IncidentEngine {
         if (design.serverSharedWithWeb) {
             list.add(Incident.Cause.SERVER_EXPOSED);
         }
+        list.add(Incident.Cause.MALWARE_C2);
         return list;
     }
 
@@ -45,7 +46,7 @@ public class IncidentEngine {
         List<Incident.Cause> weighted = new ArrayList<>();
         for (Incident.Cause c : candidates) {
             weighted.add(c);
-            if (isWeaknessCause(c)) {
+            if (isWeaknessCause(c, design)) {
                 weighted.add(c);
                 weighted.add(c);
                 if (occurredFaults.contains(c.name())) {
@@ -60,9 +61,14 @@ public class IncidentEngine {
     }
 
     public boolean isWeaknessCause(Incident.Cause c) {
+        return isWeaknessCause(c, null);
+    }
+
+    public boolean isWeaknessCause(Incident.Cause c, Design design) {
         return c == Incident.Cause.IP_EXHAUSTED
                 || c == Incident.Cause.GUEST_INTRUSION
                 || c == Incident.Cause.WEB_COMPROMISE
-                || c == Incident.Cause.SERVER_EXPOSED;
+                || c == Incident.Cause.SERVER_EXPOSED
+                || (c == Incident.Cause.MALWARE_C2 && design != null && !design.proxy);
     }
 }

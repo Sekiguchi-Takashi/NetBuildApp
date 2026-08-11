@@ -32,6 +32,11 @@ public class Evaluator {
     }
 
     public Result evaluate(Scenario scenario, Design design, int extraCost) {
+        return evaluate(scenario, design, extraCost, 0);
+    }
+
+    public Result evaluate(Scenario scenario, Design design, int extraCost, int extraBudget) {
+        int budget = scenario.budget + extraBudget;
         NetGraph g = design.buildGraph();
         RuleEngine engine = new RuleEngine(design.buildRules());
         Result r = new Result();
@@ -95,6 +100,16 @@ public class Evaluator {
             r.securityScore += 15;
         }
 
+        if (design.proxy) {
+            r.findings.add(new Finding("良", "外向き通信をプロキシに集約しています",
+                    "誰がどこへ出たかの記録が残り、危険な宛先を遮断できます"));
+            r.securityScore += 15;
+        } else {
+            r.findings.add(new Finding("将来リスク", "外向き通信の記録が残りません",
+                    "端末が外部と勝手に通信していても気づけません"));
+            r.securityScore -= 5;
+        }
+
         if (design.dnsRedundant) {
             r.findings.add(new Finding("良", "DNSが冗長化されています",
                     "1台止まっても名前解決は続きます"));
@@ -114,13 +129,13 @@ public class Evaluator {
             r.scalabilityScore += 15;
         }
 
-        if (r.cost > scenario.budget) {
+        if (r.cost > budget) {
             r.findings.add(new Finding("予算超過", "予算を超えています",
-                    "BudgetOverrun。差額 " + (r.cost - scenario.budget) + " 円"
+                    "BudgetOverrun。差額 " + (r.cost - budget) + " 円"
                             + (extraCost > 0 ? "（うち後追い改修の割増 " + extraCost + " 円）" : "")));
             r.costScore -= 25;
         } else {
-            int margin = scenario.budget - r.cost;
+            int margin = budget - r.cost;
             r.costScore += margin > 300000 ? 20 : 12;
         }
 
@@ -138,6 +153,10 @@ public class Evaluator {
 
     /** 全組み合わせを総当たりして、この案件で取りうる最良の設計を返す。 */
     public Design bestDesign(Scenario scenario) {
+        return bestDesign(scenario, 0);
+    }
+
+    public Design bestDesign(Scenario scenario, int extraBudget) {
         Design best = null;
         int bestScore = Integer.MIN_VALUE;
         boolean[] flags = {false, true};
@@ -147,18 +166,21 @@ public class Evaluator {
                 for (boolean deny : flags) {
                     for (boolean dns : flags) {
                         for (boolean shared : flags) {
-                            for (int prefix : prefixes) {
-                                Design candidate = new Design();
-                                candidate.guestVlan = vlan;
-                                candidate.dmz = dmz;
-                                candidate.fwGuestDeny = deny;
-                                candidate.dnsRedundant = dns;
-                                candidate.serverSharedWithWeb = shared;
-                                candidate.prefixLength = prefix;
-                                int score = evaluate(scenario, candidate, 0).fitness();
-                                if (score > bestScore) {
-                                    bestScore = score;
-                                    best = candidate;
+                            for (boolean px : flags) {
+                                for (int prefix : prefixes) {
+                                    Design candidate = new Design();
+                                    candidate.guestVlan = vlan;
+                                    candidate.dmz = dmz;
+                                    candidate.fwGuestDeny = deny;
+                                    candidate.dnsRedundant = dns;
+                                    candidate.serverSharedWithWeb = shared;
+                                    candidate.proxy = px;
+                                    candidate.prefixLength = prefix;
+                                    int score = evaluate(scenario, candidate, 0, extraBudget).fitness();
+                                    if (score > bestScore) {
+                                        bestScore = score;
+                                        best = candidate;
+                                    }
                                 }
                             }
                         }
@@ -171,8 +193,25 @@ public class Evaluator {
 
     /** すべて聞き出し、最良の設計を、割増なしで組んだときの点数。 */
     public int maxFitness(Scenario scenario) {
+        return maxFitness(scenario, 0);
+    }
+
+    public int maxFitness(Scenario scenario, int extraBudget) {
         int unheard = scenario.hidden.size() - scenario.revealedCount();
-        return evaluate(scenario, bestDesign(scenario), 0).fitness() + unheard * 5;
+        return evaluate(scenario, bestDesign(scenario, extraBudget), 0, extraBudget).fitness()
+                + unheard * 5;
+    }
+
+    /** すべての守りを入れた構成の費用。予算交渉が要るかの判断に使う。 */
+    public int fullProtectionCost() {
+        Design d = new Design();
+        d.guestVlan = true;
+        d.dmz = true;
+        d.dnsRedundant = true;
+        d.serverSharedWithWeb = false;
+        d.proxy = true;
+        d.prefixLength = 24;
+        return d.cost();
     }
 
     public String describeRules(Design design) {

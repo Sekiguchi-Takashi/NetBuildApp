@@ -263,7 +263,7 @@ public class MainActivity extends AppCompatActivity {
                 state.easyMode
                         ? "依頼者がネットワークに詳しい担当者に変わります。\n\n"
                         + "話しかけるたびに、いま何をすべきかを具体的に教えてくれます。"
-                        + "言われたとおりに進めれば満点（" + evaluator.maxFitness(scenario) + " 点）に届きます。"
+                        + "言われたとおりに進めれば満点（" + evaluator.maxFitness(scenario, state.extraBudget) + " 点）に届きます。"
                         : "依頼者は通常どおり、聞かれたことにしか答えません。\n\n"
                         + "手がかりは総務担当が、障害の一次情報は現場担当が持っています。");
     }
@@ -276,7 +276,7 @@ public class MainActivity extends AppCompatActivity {
         if (current != null && !current.resolved) {
             return Stakeholder.IT_STAFF;
         }
-        if (totalCost() > scenario.budget || state.trust < 40) {
+        if (totalCost() > budget() || state.trust < 40) {
             return Stakeholder.BOSS;
         }
         if (guestReachesInternal()) {
@@ -352,6 +352,7 @@ public class MainActivity extends AppCompatActivity {
                 "サブネットの /24 と /26 の違いは？",
                 "DNSを2台にする意味は？",
                 "社内サーバーはどこに置くんですか？",
+                "プロキシは何のために入れるんですか？",
                 "いまの設計はどこが危ないんですか？",
                 "先輩に戻ってもらう"
         };
@@ -401,6 +402,14 @@ public class MainActivity extends AppCompatActivity {
                         + "そこが破られると、隣にある顧客リストや図面まで同じ手が届く範囲に入ります。"
                         : "いまは分離できています。公開側が破られても、社内サーバーへは境界をもう一度越える必要があります。")
                         + "\n\n守り方の基本は、壊される前提で被害の範囲を区切ることです。";
+            case 6:
+                return "社内から外へ出る通信を1か所にまとめて、記録を残す装置です。\n\n"
+                        + (design.proxy
+                        ? "いまは導入済みです。端末が知らない宛先へ通信し始めたら、ログで気づけます。"
+                        : "いまは入っていません。端末が外部と勝手に通信していても、記録がないので気づけません。"
+                        + "障害が起きたときに「プロキシのログを確認」しても、"
+                        + "そもそも記録が無いので何も分かりません。")
+                        + "\n\n防ぐことと同じくらい、起きたときに見えることが大事です。";
             case 3:
                 return "使えるアドレスの数が変わります。\n\n"
                         + "/26 は 62 台、/24 は 254 台。いまは /" + design.prefixLength
@@ -408,7 +417,7 @@ public class MainActivity extends AppCompatActivity {
                         + "足りなくなってから広げると、アドレスの振り直しが必要になって高くつきます。";
             default:
                 StringBuilder sb = new StringBuilder();
-                Evaluator.Result r = evaluator.evaluate(scenario, design, state.extraCost);
+                Evaluator.Result r = evaluator.evaluate(scenario, design, state.extraCost, state.extraBudget);
                 boolean any = false;
                 for (Evaluator.Finding f : r.findings) {
                     if ("危険".equals(f.level) || "将来リスク".equals(f.level)) {
@@ -424,14 +433,18 @@ public class MainActivity extends AppCompatActivity {
     /** 決裁者。金額と、その金額で何が防げるのかを突く。 */
     private void bossMenu() {
         StringBuilder sb = new StringBuilder();
-        sb.append("予算 ").append(scenario.budget).append(" 円\n");
+        sb.append("予算 ").append(budget()).append(" 円");
+        if (state.extraBudget > 0) {
+            sb.append("（承認済みの増額 ").append(state.extraBudget).append(" 円を含む）");
+        }
+        sb.append('\n');
         sb.append("見積 ").append(totalCost()).append(" 円\n");
         if (state.extraCost > 0) {
             sb.append("うち後追い改修の割増 ").append(state.extraCost).append(" 円\n");
         }
         sb.append('\n');
-        if (totalCost() > scenario.budget) {
-            sb.append("超過 ").append(totalCost() - scenario.budget)
+        if (totalCost() > budget()) {
+            sb.append("超過 ").append(totalCost() - budget())
                     .append(" 円。この金額で何が防げるのか説明が要ります。\n\n");
         } else {
             sb.append("予算内です。ただし削った項目のリスクは残ります。\n\n");
@@ -446,7 +459,62 @@ public class MainActivity extends AppCompatActivity {
             sb.append("\n\n設計が原因の障害がこれまでに ")
                     .append(state.occurredFaults.size()).append(" 種類起きています。");
         }
-        show("決裁者（依頼者の上司）", sb.toString());
+        new AlertDialog.Builder(this)
+                .setTitle("決裁者（依頼者の上司）")
+                .setMessage(sb.toString())
+                .setNegativeButton("閉じる", null)
+                .setPositiveButton("増額を交渉する", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        negotiateBudget();
+                    }
+                })
+                .show();
+    }
+
+    /**
+     * 予算の増額交渉。
+     * 通るかどうかは「守る理由を説明できるか」と「これまでの信頼」で決まる。
+     */
+    private void negotiateBudget() {
+        if (state.negotiations >= 2) {
+            show("交渉", "これ以上は出せません。\n\n"
+                    + "「今期の枠はもう動かせません。この範囲でやってください」");
+            return;
+        }
+        Evaluator.Result now = evaluator.evaluate(scenario, design, state.extraCost, state.extraBudget);
+        int risks = 0;
+        for (Evaluator.Finding f : now.findings) {
+            if ("危険".equals(f.level) || "将来リスク".equals(f.level)) {
+                risks++;
+            }
+        }
+        if (risks == 0) {
+            show("交渉", "「いま困っていないものに、追加で出す理由が分かりません」\n\n"
+                    + "残っているリスクを示せないと増額は通りません。"
+                    + "設計レビューで指摘が出ている状態で交渉してください。");
+            return;
+        }
+        if (state.trust < 40) {
+            state.negotiations++;
+            save();
+            show("交渉は不調", "「まず今の障害を止めてからにしてください」\n\n"
+                    + "信頼 " + state.trust + " では通りません。"
+                    + "障害対応で信頼を戻してから、もう一度話してください。（残り "
+                    + (2 - state.negotiations) + " 回）");
+            return;
+        }
+        int granted = state.trust >= 55 ? 200000 : 100000;
+        state.extraBudget += granted;
+        state.negotiations++;
+        save();
+        show("増額が承認されました", "「" + risks + " 件の指摘が残っているのは分かりました。"
+                + granted + " 円までなら出します」\n\n"
+                + "予算 " + budget() + " 円\n"
+                + "見積 " + totalCost() + " 円\n\n"
+                + (state.trust >= 55
+                ? "信頼が高いぶん、通る額も大きくなりました。"
+                : "信頼がもう少し高ければ、通る額も上がります。")
+                + "（残り " + (2 - state.negotiations) + " 回）");
     }
 
     /** 現場担当。観察でわかる手がかりと、障害の一次情報を持っている。 */
@@ -481,8 +549,8 @@ public class MainActivity extends AppCompatActivity {
 
     /** 簡単モードの依頼者。ネットワークに詳しく、次の一手を必ず示す。 */
     private void easyClientMenu() {
-        Evaluator.Result now = evaluator.evaluate(scenario, design, state.extraCost);
-        int max = evaluator.maxFitness(scenario);
+        Evaluator.Result now = evaluator.evaluate(scenario, design, state.extraCost, state.extraBudget);
+        int max = evaluator.maxFitness(scenario, state.extraBudget);
         final int unknown = scenario.hidden.size() - scenario.revealedCount();
 
         StringBuilder sb = new StringBuilder();
@@ -526,7 +594,7 @@ public class MainActivity extends AppCompatActivity {
                         + "「" + ranked.get(0).getKey().label + "」の可能性が "
                         + Math.round(top * 100) + "% です。社員に原因を報告させてください。";
             }
-            Diagnostics.Command suggestion = diagnostics.suggest(current);
+            Diagnostics.Command suggestion = diagnostics.suggest(current, design.proxy);
             if (suggestion == null) {
                 return "打てる診断は出し尽くしました。"
                         + "いちばん確率の高い「" + ranked.get(0).getKey().label + "」で報告してみてください。";
@@ -535,7 +603,20 @@ public class MainActivity extends AppCompatActivity {
                     + "次は「" + suggestion.label + "」を試してください。\n"
                     + "この結果なら候補をだいたい半分に割れます。";
         }
-        Design best = evaluator.bestDesign(scenario);
+        int needed = evaluator.fullProtectionCost();
+        if (needed > budget() && state.negotiations < 2 && state.trust >= 40) {
+            return "守りを全部入れると " + needed + " 円かかりますが、予算は " + budget() + " 円です。\n\n"
+                    + "決裁者に増額を交渉してください。"
+                    + "設計レビューで指摘が出ている状態で話すと、根拠として通りやすくなります。";
+        }
+        Design best = evaluator.bestDesign(scenario, state.extraBudget);
+        if (design.proxy != best.proxy) {
+            return best.proxy
+                    ? "プロキシを導入してください。図のFirewallを押すと選べます。\n\n"
+                    + "外向き通信の記録が残らないと、端末が感染しても気づけません。"
+                    + "止めるためではなく、見えるようにするための投資です。"
+                    : "いまの予算ではプロキシまでは手が回りません。先に予算の交渉が要ります。";
+        }
         if (design.guestVlan != best.guestVlan) {
             return best.guestVlan
                     ? "来客を VLAN で分離してください。図のスイッチか来客端末を押します。\n\n"
@@ -581,7 +662,7 @@ public class MainActivity extends AppCompatActivity {
         StringBuilder sb = new StringBuilder();
         sb.append(scenario.client).append('\n');
         sb.append("「").append(scenario.explicitRequirement).append("」\n\n");
-        sb.append("予算 ").append(scenario.budget / 10000).append(" 万円 / 現在 ")
+        sb.append("予算 ").append(budget() / 10000).append(" 万円 / 現在 ")
                 .append(scenario.currentUsers).append(" 人\n\n");
 
         sb.append("[ 性格 ]\n").append(scenario.personality).append("\n\n");
@@ -665,6 +746,10 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }, "web");
         } else if ("fw".equals(id)) {
+            if (!design.proxy) {
+                firewallMenu();
+                return;
+            }
             toggleDialog("Firewall",
                     evaluator.describeRules(design) + "\n来客Denyルール: "
                             + (design.fwGuestDeny ? "あり" : "なし"),
@@ -692,6 +777,19 @@ public class MainActivity extends AppCompatActivity {
                             });
                         }
                     }, "pc");
+        } else if ("proxy".equals(id) || ("sw".equals(id) && false)) {
+            toggleDialog("プロキシ",
+                    "社内から外へ出る通信を、代わりに中継して記録する装置です。\n\n現在: 導入済み",
+                    "撤去する（-15万円）",
+                    new Runnable() {
+                        public void run() {
+                            changeDesign(new Runnable() {
+                                public void run() {
+                                    design.proxy = false;
+                                }
+                            });
+                        }
+                    }, "proxy");
         } else if ("srv".equals(id)) {
             toggleDialog("社内サーバー",
                     "顧客リストや図面が入っている、社内の人だけが使うサーバーです。\n\n現在: "
@@ -737,6 +835,40 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /** プロキシ未導入のときは、境界まわりの選択肢をまとめて出す。 */
+    private void firewallMenu() {
+        final String[] items = {
+                design.fwGuestDeny ? "来客Denyルールを外す" : "来客Denyルールを追加する",
+                "プロキシを導入する（+15万円）",
+                "ルール一覧を見る",
+                "Firewallについて"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("Firewall / 境界")
+                .setItems(items, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (which == 0) {
+                            changeDesign(new Runnable() {
+                                public void run() {
+                                    design.fwGuestDeny = !design.fwGuestDeny;
+                                }
+                            });
+                        } else if (which == 1) {
+                            changeDesign(new Runnable() {
+                                public void run() {
+                                    design.proxy = true;
+                                }
+                            });
+                        } else if (which == 2) {
+                            show("Firewallルール", evaluator.describeRules(design));
+                        } else {
+                            showDeviceGuide("fw");
+                        }
+                    }
+                })
+                .show();
+    }
+
     private void linkMenu(String a, String b, String kind) {
         String title;
         String body;
@@ -776,7 +908,7 @@ public class MainActivity extends AppCompatActivity {
         }
         save();
         show("設計変更", design.summary() + "\n\n費用 " + totalCost() + " 円 / 予算 "
-                + scenario.budget + " 円" + extra);
+                + budget() + " 円" + extra);
     }
 
     // ------------------------------------------------------------------
@@ -799,7 +931,7 @@ public class MainActivity extends AppCompatActivity {
             save();
             return;
         }
-        boolean repeat = incidents.isWeaknessCause(current.cause)
+        boolean repeat = incidents.isWeaknessCause(current.cause, design)
                 && state.occurredFaults.contains(current.cause.name());
         say("「" + current.cause.symptom + "」");
         save();
@@ -820,7 +952,7 @@ public class MainActivity extends AppCompatActivity {
                 .setTitle("診断コマンド")
                 .setItems(labels, new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int which) {
-                        String text = diagnostics.run(current, commands[which]);
+                        String text = diagnostics.run(current, commands[which], design.proxy);
                         save();
                         show("診断結果", text);
                     }
@@ -854,7 +986,7 @@ public class MainActivity extends AppCompatActivity {
             sb.append("対処: ").append(current.cause.fix).append("\n\n");
             sb.append("診断 ").append(current.log.size()).append(" 回で特定（信頼 +")
                     .append(bonus).append(" → ").append(state.trust).append("）");
-            if (incidents.isWeaknessCause(current.cause)) {
+            if (incidents.isWeaknessCause(current.cause, design)) {
                 state.occurredFaults.add(current.cause.name());
                 sb.append("\n\nこれは設計の弱点が原因です。図の機器を触って直さない限り再発率が上がります。");
             }
@@ -870,7 +1002,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void runReview() {
-        Evaluator.Result result = evaluator.evaluate(scenario, design, state.extraCost);
+        Evaluator.Result result = evaluator.evaluate(scenario, design, state.extraCost, state.extraBudget);
         StringBuilder sb = new StringBuilder(design.summary()).append("\n\n");
         for (Evaluator.Finding f : result.findings) {
             sb.append("[").append(f.level).append("] ").append(f.title).append('\n');
@@ -880,7 +1012,7 @@ public class MainActivity extends AppCompatActivity {
                 .append(" / セキュリティ ").append(sign(result.securityScore))
                 .append(" / 拡張性 ").append(sign(result.scalabilityScore))
                 .append(" / コスト ").append(sign(result.costScore)).append('\n');
-        int max = evaluator.maxFitness(scenario);
+        int max = evaluator.maxFitness(scenario, state.extraBudget);
         sb.append("案件適合度 ").append(result.fitness()).append(" / 満点 ").append(max);
         if (result.fitness() >= max) {
             sb.append("\n\n満点です。");
@@ -896,7 +1028,7 @@ public class MainActivity extends AppCompatActivity {
         if (state.extraCost > 0) {
             sb.append("（後追い改修の割増 ").append(state.extraCost).append(" 円を含む）");
         }
-        sb.append("\n予算 ").append(scenario.budget).append(" 円\n");
+        sb.append("\n予算 ").append(budget()).append(" 円\n");
         if (!state.occurredFaults.isEmpty()) {
             sb.append("\n過去に起きた設計起因の障害: ").append(state.occurredFaults.size()).append(" 種\n");
         }
@@ -955,6 +1087,10 @@ public class MainActivity extends AppCompatActivity {
         return design.cost() + state.extraCost;
     }
 
+    private int budget() {
+        return scenario.budget + state.extraBudget;
+    }
+
     private void save() {
         state.save(this, design, scenario, current);
         refresh();
@@ -1000,6 +1136,7 @@ public class MainActivity extends AppCompatActivity {
                         design.fwGuestDeny = false;
                         design.dnsRedundant = false;
                         design.serverSharedWithWeb = true;
+                        design.proxy = false;
                         design.prefixLength = 26;
                         say("「" + scenario.explicitRequirement + "」");
                         refresh();

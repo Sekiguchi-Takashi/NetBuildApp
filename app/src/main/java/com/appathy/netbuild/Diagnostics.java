@@ -15,7 +15,8 @@ public class Diagnostics {
         DHCP_LEASE("新規端末のDHCP取得を確認"),
         INTERNAL_LOG("社内サーバーのアクセスログを確認"),
         PUBLIC_LOG("公開サーバーの改ざん検知ログを確認"),
-        EXTERNAL_REACH("外部から社内サーバーに届くか確認");
+        EXTERNAL_REACH("外部から社内サーバーに届くか確認"),
+        PROXY_LOG("プロキシの通信ログを確認");
 
         public final String label;
 
@@ -42,6 +43,8 @@ public class Diagnostics {
                         && cause != Incident.Cause.SERVER_EXPOSED;
             case EXTERNAL_REACH:
                 return cause != Incident.Cause.SERVER_EXPOSED;
+            case PROXY_LOG:
+                return cause != Incident.Cause.MALWARE_C2;
             case PUBLIC_LOG:
                 return cause != Incident.Cause.WEB_COMPROMISE;
             default:
@@ -65,6 +68,8 @@ public class Diagnostics {
                 return normal ? "改ざん検知なし" : "公開ディレクトリのファイル改変を検出";
             case EXTERNAL_REACH:
                 return normal ? "外部からは応答しない" : "外部から共有フォルダに接続できてしまう";
+            case PROXY_LOG:
+                return normal ? "不審な宛先への通信なし" : "1台の端末から、見覚えのない宛先へ短い間隔で接続";
             default:
                 return normal ? "正常" : "異常";
         }
@@ -92,10 +97,14 @@ public class Diagnostics {
      * 仮説の確率を正常側と異常側にどれだけ均等に割れるかで選ぶ。
      */
     public Command suggest(Incident incident) {
+        return suggest(incident, true);
+    }
+
+    public Command suggest(Incident incident, boolean proxyAvailable) {
         Command best = null;
         double bestSplit = -1;
         for (Command c : Command.values()) {
-            if (alreadyRun(incident, c)) {
+            if (alreadyRun(incident, c) || (c == Command.PROXY_LOG && !proxyAvailable)) {
                 continue;
             }
             double normalMass = 0;
@@ -123,9 +132,19 @@ public class Diagnostics {
     }
 
     public String run(Incident incident, Command command) {
+        return run(incident, command, true);
+    }
+
+    /** プロキシが無い状態でログを見ても、記録そのものが存在しない。 */
+    public String run(Incident incident, Command command, boolean proxyAvailable) {
+        boolean noRecord = command == Command.PROXY_LOG && !proxyAvailable;
         boolean observed = normal(command, incident.cause);
-        update(incident, command, observed);
-        String line = command.label + "  →  " + resultText(command, observed);
+        if (!noRecord) {
+            update(incident, command, observed);
+        }
+        String line = command.label + "  →  "
+                + (noRecord ? "プロキシが無いため記録が残っていません（何も分からない）"
+                : resultText(command, observed));
         incident.log.add(line);
         StringBuilder sb = new StringBuilder("診断\n");
         for (String entry : incident.log) {

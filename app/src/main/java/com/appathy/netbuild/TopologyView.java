@@ -54,6 +54,7 @@ public class TopologyView extends View {
         SLOTS.put("net", new Slot(R.drawable.ic_cloud, 0.80f, 0.06f, 0.92f, 0.14f));
         SLOTS.put("web", new Slot(R.drawable.ic_server, 0.56f, 0.80f, 0.44f, 0.86f));
         SLOTS.put("srv", new Slot(R.drawable.ic_server, 0.30f, 0.86f, 0.24f, 0.88f));
+        SLOTS.put("proxy", new Slot(R.drawable.ic_switch, 0.60f, 0.18f, 0.44f, 0.16f));
         SLOTS.put("dns1", new Slot(R.drawable.ic_server, 0.86f, 0.72f, 0.66f, 0.86f));
         SLOTS.put("dns2", new Slot(R.drawable.ic_server, 0.86f, 0.94f, 0.85f, 0.86f));
     }
@@ -341,6 +342,8 @@ public class TopologyView extends View {
                 return l.a.startsWith("dns") || l.b.startsWith("dns");
             case SERVER_EXPOSED:
                 return "srv".equals(l.a) || "srv".equals(l.b);
+            case MALWARE_C2:
+                return "uplink".equals(l.kind);
             default:
                 return false;
         }

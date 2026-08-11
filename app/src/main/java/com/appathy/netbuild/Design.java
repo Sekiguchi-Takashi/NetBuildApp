@@ -12,6 +12,7 @@ public class Design {
     public boolean dnsRedundant = false;
     /** 社内サーバーを公開サーバーと同じ区画に置いたままにするか。初期値は同居（安いが危ない）。 */
     public boolean serverSharedWithWeb = true;
+    public boolean proxy = false;
     public int prefixLength = 26;
 
     public static final int COST_BASE = 420000;
@@ -20,6 +21,7 @@ public class Design {
     public static final int COST_LARGE_SUBNET = 60000;
     public static final int COST_DNS_SECONDARY = 40000;
     public static final int COST_SERVER_SEGMENT = 80000;
+    public static final int COST_PROXY = 150000;
 
     public int cost() {
         int total = COST_BASE;
@@ -37,6 +39,9 @@ public class Design {
         }
         if (!serverSharedWithWeb) {
             total += COST_SERVER_SEGMENT;
+        }
+        if (proxy) {
+            total += COST_PROXY;
         }
         return total;
     }
@@ -65,6 +70,9 @@ public class Design {
         String serverZone = serverSharedWithWeb ? (dmz ? "dmz" : "internal") : "internal";
         String serverVlanId = serverSharedWithWeb ? serverVlan : employeeVlan;
         g.node("srv", "server", "社内サーバー").put("zone", serverZone).put("vlan", serverVlanId);
+        if (proxy) {
+            g.node("proxy", "proxy", "プロキシ").put("zone", "internal").put("vlan", employeeVlan);
+        }
         g.node("dns1", "dns", "DNS").put("zone", "internal").put("vlan", employeeVlan);
         if (dnsRedundant) {
             g.node("dns2", "dns", "DNS副").put("zone", "internal").put("vlan", employeeVlan);
@@ -74,6 +82,9 @@ public class Design {
         g.edge("guest", "sw", "lan");
         g.edge("web", "sw", "lan");
         g.edge("srv", "sw", "lan");
+        if (proxy) {
+            g.edge("proxy", "sw", "lan");
+        }
         g.edge("dns1", "sw", "lan");
         if (dnsRedundant) {
             g.edge("dns2", "sw", "lan");
@@ -108,6 +119,7 @@ public class Design {
                 + " / 来客Denyルール: " + (fwGuestDeny ? "あり" : "なし")
                 + " / 社内サブネット: /" + prefixLength + "（" + usableHosts() + "台）"
                 + " / DNS: " + (dnsRedundant ? "2台" : "1台")
-                + " / 社内サーバー: " + (serverSharedWithWeb ? "公開サーバーと同区画" : "内部に分離");
+                + " / 社内サーバー: " + (serverSharedWithWeb ? "公開サーバーと同区画" : "内部に分離")
+                + " / プロキシ: " + (proxy ? "あり" : "なし");
     }
 }
