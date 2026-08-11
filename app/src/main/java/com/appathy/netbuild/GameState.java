@@ -15,6 +15,10 @@ public class GameState {
     private static final String PREF = "netbuild_state";
     private static final String KEY = "state";
 
+    private static String keyFor(Scenario scenario) {
+        return KEY + ":" + scenario.id;
+    }
+
     public int day;
     public int trust = 50;
     public int extraCost;
@@ -41,6 +45,23 @@ public class GameState {
             d.put("dnsRedundant", design.dnsRedundant);
             d.put("serverSharedWithWeb", design.serverSharedWithWeb);
             d.put("proxy", design.proxy);
+            d.put("remoteVpn", design.remoteVpn);
+            d.put("vendorOnDemand", design.vendorOnDemand);
+            d.put("saseBypass", design.saseBypass);
+            d.put("ztna", design.ztna);
+            if (design.customRules != null) {
+                JSONArray rules = new JSONArray();
+                for (FirewallRule rule : design.customRules) {
+                    JSONObject o = new JSONObject();
+                    o.put("src", rule.sourceZone);
+                    o.put("dst", rule.destZone);
+                    o.put("proto", rule.protocol);
+                    o.put("port", rule.port);
+                    o.put("allow", rule.allow);
+                    rules.put(o);
+                }
+                d.put("rules", rules);
+            }
             d.put("prefixLength", design.prefixLength);
             root.put("design", d);
 
@@ -63,14 +84,14 @@ public class GameState {
                 inc.put("belief", belief);
                 root.put("incident", inc);
             }
-            prefs(context).edit().putString(KEY, root.toString()).apply();
+            prefs(context).edit().putString(keyFor(scenario), root.toString()).apply();
         } catch (Exception ignored) {
         }
     }
 
     /** 保存済みの状態を読み込み、進行中の障害があれば返す。 */
     public Incident load(Context context, Design design, Scenario scenario) {
-        String stored = prefs(context).getString(KEY, null);
+        String stored = prefs(context).getString(keyFor(scenario), null);
         if (stored == null) {
             return null;
         }
@@ -96,6 +117,19 @@ public class GameState {
                 design.dnsRedundant = d.optBoolean("dnsRedundant");
                 design.serverSharedWithWeb = d.optBoolean("serverSharedWithWeb", true);
                 design.proxy = d.optBoolean("proxy");
+                design.remoteVpn = d.optBoolean("remoteVpn");
+                design.vendorOnDemand = d.optBoolean("vendorOnDemand");
+                design.saseBypass = d.optBoolean("saseBypass", true);
+                design.ztna = d.optBoolean("ztna");
+                JSONArray rules = d.optJSONArray("rules");
+                if (rules != null) {
+                    design.customRules = new java.util.ArrayList<>();
+                    for (int i = 0; i < rules.length(); i++) {
+                        JSONObject o = rules.getJSONObject(i);
+                        design.customRules.add(new FirewallRule(o.optString("src"), o.optString("dst"),
+                                o.optString("proto"), o.optString("port"), o.optBoolean("allow")));
+                    }
+                }
                 design.prefixLength = d.optInt("prefixLength", 26);
             }
             JSONArray revealed = root.optJSONArray("revealed");
@@ -149,8 +183,8 @@ public class GameState {
         return list;
     }
 
-    public void reset(Context context) {
-        prefs(context).edit().remove(KEY).apply();
+    public void reset(Context context, Scenario scenario) {
+        prefs(context).edit().remove(keyFor(scenario)).apply();
         day = 0;
         trust = 50;
         extraCost = 0;

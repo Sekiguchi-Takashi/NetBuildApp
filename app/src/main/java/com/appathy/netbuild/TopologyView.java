@@ -57,6 +57,10 @@ public class TopologyView extends View {
         SLOTS.put("proxy", new Slot(R.drawable.ic_switch, 0.60f, 0.18f, 0.44f, 0.16f));
         SLOTS.put("dns1", new Slot(R.drawable.ic_server, 0.86f, 0.72f, 0.66f, 0.86f));
         SLOTS.put("dns2", new Slot(R.drawable.ic_server, 0.86f, 0.94f, 0.85f, 0.86f));
+        SLOTS.put("cloud", new Slot(R.drawable.ic_cloud, 0.96f, 0.30f, 0.96f, 0.42f));
+        SLOTS.put("vendor", new Slot(R.drawable.ic_server, 0.98f, 0.06f, 0.98f, 0.04f));
+        SLOTS.put("home", new Slot(R.drawable.ic_guest, 0.62f, 0.02f, 0.80f, 0.02f));
+        SLOTS.put("sase", new Slot(R.drawable.ic_cloud, 0.42f, 0.20f, 0.40f, 0.16f));
     }
 
     private static class Spot {
@@ -110,6 +114,7 @@ public class TopologyView extends View {
     private final Paint badge = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private Design design = new Design();
+    private Scenario scenario;
     private Incident.Cause cause;
     private boolean guestReachesInternal;
     private boolean internetReachesInternal;
@@ -194,13 +199,20 @@ public class TopologyView extends View {
     }
 
     public void update(Design design, Incident.Cause cause) {
+        update(design, cause, scenario);
+    }
+
+    public void update(Design design, Incident.Cause cause, Scenario scenario) {
         this.design = design;
         this.cause = cause;
-        NetGraph g = design.buildGraph();
+        this.scenario = scenario;
+        NetGraph g = design.buildGraph(scenario);
         rebuild(g);
-        RuleEngine engine = new RuleEngine(design.buildRules());
-        guestReachesInternal = engine.canReach(g, "guest", "pc").reachable;
-        internetReachesInternal = engine.canReach(g, "net", "pc").reachable;
+        RuleEngine engine = new RuleEngine(design.buildRules(scenario));
+        guestReachesInternal = g.find("guest") != null && g.find("pc") != null
+                && engine.canReach(g, "guest", "pc").reachable;
+        internetReachesInternal = g.find("pc") != null
+                && engine.canReach(g, "net", "pc").reachable;
         invalidate();
     }
 

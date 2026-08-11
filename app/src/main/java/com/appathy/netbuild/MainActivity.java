@@ -24,7 +24,7 @@ import java.util.List;
  */
 public class MainActivity extends AppCompatActivity {
 
-    private final Scenario scenario = Scenario.office();
+    private Scenario scenario = Scenario.office();
     private final Design design = new Design();
     private final Evaluator evaluator = new Evaluator();
     private final IncidentEngine incidents = new IncidentEngine();
@@ -168,6 +168,12 @@ public class MainActivity extends AppCompatActivity {
                 showBrief();
             }
         });
+        actions.add("案件を切り替える");
+        handlers.add(new Runnable() {
+            public void run() {
+                switchScenario();
+            }
+        });
         actions.add("マニュアルを読む");
         handlers.add(new Runnable() {
             public void run() {
@@ -208,6 +214,39 @@ public class MainActivity extends AppCompatActivity {
     // ------------------------------------------------------------------
     // クライアント — 要望・個性・ヒント
     // ------------------------------------------------------------------
+
+    /** 案件ごとに前提（境界をどこに置くか）が違う。進行も案件ごとに分けて保存される。 */
+    private void switchScenario() {
+        final List<Scenario> all = Scenario.all();
+        String[] labels = new String[all.size()];
+        for (int i = 0; i < all.size(); i++) {
+            Scenario sc = all.get(i);
+            labels[i] = sc.client + "（" + sc.boundary.label + "）"
+                    + (sc.id.equals(scenario.id) ? "  ← 対応中" : "");
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("案件を選ぶ")
+                .setItems(labels, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        Scenario picked = all.get(which);
+                        if (picked.id.equals(scenario.id)) {
+                            return;
+                        }
+                        scenario = picked;
+                        design.customRules = null;
+                        current = state.load(MainActivity.this, design, scenario);
+                        refresh();
+                        show(scenario.client,
+                                "「" + scenario.explicitRequirement + "」\n\n"
+                                        + "[ 前提 ]\n" + scenario.boundary.label + "\n"
+                                        + scenario.boundary.detail + "\n\n"
+                                        + "この方針は契約時に決まっています。設計で選び直すものではありません。\n\n"
+                                        + "予算 " + scenario.budget + " 円");
+                        say("「" + scenario.explicitRequirement + "」");
+                    }
+                })
+                .show();
+    }
 
     private void manualMenu() {
         final List<Manual> sections = Manual.sections();
@@ -290,8 +329,11 @@ public class MainActivity extends AppCompatActivity {
 
     /** 来客セグメントから社内に届く状態か。インターンの登場条件に使う。 */
     private boolean guestReachesInternal() {
-        NetGraph g = design.buildGraph();
-        return new RuleEngine(design.buildRules()).canReach(g, "guest", "pc").reachable;
+        NetGraph g = design.buildGraph(scenario);
+        if (g.find("guest") == null) {
+            return false;
+        }
+        return new RuleEngine(design.buildRules(scenario)).canReach(g, "guest", "pc").reachable;
     }
 
     private void partnerMenu() {
@@ -353,6 +395,9 @@ public class MainActivity extends AppCompatActivity {
                 "DNSを2台にする意味は？",
                 "社内サーバーはどこに置くんですか？",
                 "プロキシは何のために入れるんですか？",
+                "ルールが多いと何が困るんですか？",
+                "VPNって結局なんですか？",
+                "保守業者の接続はどう扱うんですか？",
                 "いまの設計はどこが危ないんですか？",
                 "先輩に戻ってもらう"
         };
@@ -410,6 +455,30 @@ public class MainActivity extends AppCompatActivity {
                         + "障害が起きたときに「プロキシのログを確認」しても、"
                         + "そもそも記録が無いので何も分かりません。")
                         + "\n\n防ぐことと同じくらい、起きたときに見えることが大事です。";
+            case 7:
+                return "困るのは2つです。\n\n"
+                        + "ひとつは過剰な許可。業務で要らない通信を通すルールは、そのまま侵入経路になります。"
+                        + "「とりあえず通しておく」が一番危ないです。\n\n"
+                        + "もうひとつは効かないルール。上のルールで全部拾われる位置に書くと、"
+                        + "そのルールは一度も評価されません。書いた本人は守れているつもりでいるので、"
+                        + "抜けているルールより見つけにくいです。\n\n"
+                        + "いまのルールは " + design.buildRules(scenario).size() + " 件です。";
+            case 8:
+                return "公衆回線の上に、暗号化した通り道を作る仕組みです。\n\n"
+                        + (design.remoteVpn
+                        ? "いまは在宅の人がVPN経由で社内に入れます。"
+                        : "いまは用意していないので、在宅の人は社内システムを使えません。")
+                        + "\n\n気をつけるのは、つないだ端末を「社内と同じ」扱いにしてしまうことです。"
+                        + "家庭で感染した端末がそのまま社内に入ります。"
+                        + "VPN装置そのものの脆弱性が侵入経路になった事例も多いです。";
+            case 9:
+                return "相手は自社の管理が及ばない会社です。"
+                        + "その会社が侵害されたら、こちらへの接続経路がそのまま入口になります。\n\n"
+                        + (design.vendorOnDemand
+                        ? "いまは必要なときだけ開ける運用です。開いている時間が短いほど、狙われる時間も短くなります。"
+                        : "いまは常時つなぎっぱなしです。保守はたまにしか使わないのに、"
+                        + "経路は24時間開いています。")
+                        + "\n\nサプライチェーン攻撃と呼ばれる筋道で、実際に起きています。";
             case 3:
                 return "使えるアドレスの数が変わります。\n\n"
                         + "/26 は 62 台、/24 は 254 台。いまは /" + design.prefixLength
@@ -603,13 +672,32 @@ public class MainActivity extends AppCompatActivity {
                     + "次は「" + suggestion.label + "」を試してください。\n"
                     + "この結果なら候補をだいたい半分に割れます。";
         }
-        int needed = evaluator.fullProtectionCost();
+        Evaluator.Result check = evaluator.evaluate(scenario, design, state.extraCost, state.extraBudget);
+        for (Evaluator.Finding f : check.findings) {
+            if ("過剰な許可があります".equals(f.title) || "効かないルールがあります".equals(f.title)) {
+                return "Firewallのルールに問題があります。\n\n" + f.detail
+                        + "\n\n図のFirewallを押して、ルールを直してください。";
+            }
+        }
+        int needed = evaluator.fullProtectionCost(scenario);
         if (needed > budget() && state.negotiations < 2 && state.trust >= 40) {
             return "守りを全部入れると " + needed + " 円かかりますが、予算は " + budget() + " 円です。\n\n"
                     + "決裁者に増額を交渉してください。"
                     + "設計レビューで指摘が出ている状態で話すと、根拠として通りやすくなります。";
         }
         Design best = evaluator.bestDesign(scenario, state.extraBudget);
+        if (design.remoteVpn != best.remoteVpn) {
+            return best.remoteVpn
+                    ? "在宅から社内システムへ入る手段がありません。図の在宅端末を押してVPNを用意してください。\n\n"
+                    + "週2で在宅の人がいると聞いています。手段が無いままだと要求未達です。"
+                    : "リモートVPNは不要です。";
+        }
+        if (design.vendorOnDemand != best.vendorOnDemand) {
+            return best.vendorOnDemand
+                    ? "保守業者の接続を、必要なときだけ開ける運用に変えてください。図の保守業者を押します。\n\n"
+                    + "常時つなぎっぱなしだと、業者側が侵害されたときに24時間いつでも入れる入口になります。"
+                    : "保守接続は常時のままで構いません。";
+        }
         if (design.proxy != best.proxy) {
             return best.proxy
                     ? "プロキシを導入してください。図のFirewallを押すと選べます。\n\n"
@@ -786,10 +874,83 @@ public class MainActivity extends AppCompatActivity {
                             changeDesign(new Runnable() {
                                 public void run() {
                                     design.proxy = false;
+                        design.remoteVpn = false;
+                        design.vendorOnDemand = false;
+                        design.customRules = null;
                                 }
                             });
                         }
                     }, "proxy");
+        } else if ("sase".equals(id)) {
+            toggleDialog("SASE",
+                    "検査をクラウド側でまとめて行う仕組みです。"
+                            + "この案件では最初から使う前提で契約しています。\n\n現在: "
+                            + (design.saseBypass
+                            ? "一部の通信がSASEを通らずに直接出ています"
+                            : "全通信がSASEを通っています"),
+                    design.saseBypass ? "例外をなくす（+5万円）" : "例外を戻す（-5万円）",
+                    new Runnable() {
+                        public void run() {
+                            changeDesign(new Runnable() {
+                                public void run() {
+                                    design.saseBypass = !design.saseBypass;
+                                }
+                            });
+                        }
+                    }, "sase");
+        } else if ("vendor".equals(id)) {
+            toggleDialog("保守業者",
+                    "業務システムの保守で、社内に入ってくる相手です。\n\n現在: "
+                            + (design.vendorOnDemand
+                            ? "必要なときだけ開ける運用（申請ベース）"
+                            : "常時つなぎっぱなし"),
+                    design.vendorOnDemand ? "常時接続に戻す（-3万円）" : "必要時のみに変える（+3万円）",
+                    new Runnable() {
+                        public void run() {
+                            changeDesign(new Runnable() {
+                                public void run() {
+                                    design.vendorOnDemand = !design.vendorOnDemand;
+                                }
+                            });
+                        }
+                    }, "vendor_server");
+        } else if ("home".equals(id) && scenario.boundary == Scenario.Boundary.SASE) {
+            toggleDialog("社員端末",
+                    "事務所に残る受発注システムへ、どうやって入るかを決めます。\n\n現在: "
+                            + (design.ztna
+                            ? "SASE経由の認証つきアクセス"
+                            : "接続手段なし（事務所のシステムを使えません）"),
+                    design.ztna ? "やめる（-12万円）" : "SASE経由のアクセスを設定する（+12万円）",
+                    new Runnable() {
+                        public void run() {
+                            changeDesign(new Runnable() {
+                                public void run() {
+                                    design.ztna = !design.ztna;
+                                }
+                            });
+                        }
+                    }, "sase");
+        } else if ("home".equals(id)) {
+            toggleDialog("在宅端末",
+                    "家から社内システムを使う端末です。\n\n現在: "
+                            + (design.remoteVpn
+                            ? "リモートアクセスVPNで接続"
+                            : "接続手段なし（社内には入れません）"),
+                    design.remoteVpn ? "VPNを撤去する（-12万円）" : "リモートVPNを用意する（+12万円）",
+                    new Runnable() {
+                        public void run() {
+                            changeDesign(new Runnable() {
+                                public void run() {
+                                    design.remoteVpn = !design.remoteVpn;
+                                }
+                            });
+                        }
+                    }, "vpn");
+        } else if ("cloud".equals(id)) {
+            show("クラウド", "業務システムを動かしている、社外の事業者の設備です。"
+                    + "ここは設計で置き換えられません。\n\n"
+                    + "機器の故障は事業者が見ますが、公開範囲や権限の設定は利用者側の責任のままです。"
+                    + "社内から出ていく通信の扱いは、プロキシと境界のルールで決まります。");
         } else if ("srv".equals(id)) {
             toggleDialog("社内サーバー",
                     "顧客リストや図面が入っている、社内の人だけが使うサーバーです。\n\n現在: "
@@ -835,35 +996,170 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /** プロキシ未導入のときは、境界まわりの選択肢をまとめて出す。 */
+    /** 境界まわりの操作をまとめる。 */
     private void firewallMenu() {
-        final String[] items = {
-                design.fwGuestDeny ? "来客Denyルールを外す" : "来客Denyルールを追加する",
-                "プロキシを導入する（+15万円）",
-                "ルール一覧を見る",
-                "Firewallについて"
-        };
+        final List<String> items = new ArrayList<>();
+        final List<Runnable> actions = new ArrayList<>();
+
+        if (design.customRules == null) {
+            items.add(design.fwGuestDeny ? "来客Denyルールを外す" : "来客Denyルールを追加する");
+            actions.add(new Runnable() {
+                public void run() {
+                    changeDesign(new Runnable() {
+                        public void run() {
+                            design.fwGuestDeny = !design.fwGuestDeny;
+                        }
+                    });
+                }
+            });
+            items.add("ルールを手で編集する");
+            actions.add(new Runnable() {
+                public void run() {
+                    design.customRules = new ArrayList<>(design.defaultRules());
+                    save();
+                    ruleEditor();
+                }
+            });
+        } else {
+            items.add("ルールを編集する（" + design.customRules.size() + "件）");
+            actions.add(new Runnable() {
+                public void run() {
+                    ruleEditor();
+                }
+            });
+            items.add("自動生成に戻す");
+            actions.add(new Runnable() {
+                public void run() {
+                    design.customRules = null;
+                    save();
+                    show("Firewall", "設計の選択からルールを自動生成する状態に戻しました。");
+                }
+            });
+        }
+
+        if (!design.proxy) {
+            items.add("プロキシを導入する（+15万円）");
+            actions.add(new Runnable() {
+                public void run() {
+                    changeDesign(new Runnable() {
+                        public void run() {
+                            design.proxy = true;
+                        }
+                    });
+                }
+            });
+        }
+        items.add("ルール一覧を見る");
+        actions.add(new Runnable() {
+            public void run() {
+                show("Firewallルール", evaluator.describeRules(design));
+            }
+        });
+        items.add("Firewallについて");
+        actions.add(new Runnable() {
+            public void run() {
+                showDeviceGuide("fw");
+            }
+        });
+
         new AlertDialog.Builder(this)
                 .setTitle("Firewall / 境界")
+                .setItems(items.toArray(new String[0]), new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        actions.get(which).run();
+                    }
+                })
+                .show();
+    }
+
+    /** ルールの一覧。並び順そのものが設計なので、順序を動かせるようにする。 */
+    private void ruleEditor() {
+        final List<FirewallRule> rules = design.customRules;
+        final String[] labels = new String[rules.size() + 1];
+        for (int i = 0; i < rules.size(); i++) {
+            labels[i] = rules.get(i).describe(i + 1);
+        }
+        labels[rules.size()] = "＋ ルールを追加する";
+
+        new AlertDialog.Builder(this)
+                .setTitle("ルール（上から順に評価）")
+                .setItems(labels, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (which == rules.size()) {
+                            addRuleSource();
+                        } else {
+                            ruleActions(which);
+                        }
+                    }
+                })
+                .setNegativeButton("閉じる", null)
+                .show();
+    }
+
+    private void ruleActions(final int index) {
+        final List<FirewallRule> rules = design.customRules;
+        final String[] items = {"1つ上へ", "1つ下へ", "このルールを削除", "戻る"};
+        new AlertDialog.Builder(this)
+                .setTitle(rules.get(index).describe(index + 1))
                 .setItems(items, new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int which) {
-                        if (which == 0) {
-                            changeDesign(new Runnable() {
-                                public void run() {
-                                    design.fwGuestDeny = !design.fwGuestDeny;
-                                }
-                            });
-                        } else if (which == 1) {
-                            changeDesign(new Runnable() {
-                                public void run() {
-                                    design.proxy = true;
-                                }
-                            });
+                        if (which == 0 && index > 0) {
+                            FirewallRule moved = rules.remove(index);
+                            rules.add(index - 1, moved);
+                        } else if (which == 1 && index < rules.size() - 1) {
+                            FirewallRule moved = rules.remove(index);
+                            rules.add(index + 1, moved);
                         } else if (which == 2) {
-                            show("Firewallルール", evaluator.describeRules(design));
-                        } else {
-                            showDeviceGuide("fw");
+                            rules.remove(index);
                         }
+                        save();
+                        ruleEditor();
+                    }
+                })
+                .show();
+    }
+
+    private void addRuleSource() {
+        final String[] zones = scenario.zones;
+        new AlertDialog.Builder(this)
+                .setTitle("どこからの通信ですか")
+                .setItems(zones, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        addRuleDest(zones[which]);
+                    }
+                })
+                .show();
+    }
+
+    private void addRuleDest(final String source) {
+        final String[] zones = scenario.zones;
+        new AlertDialog.Builder(this)
+                .setTitle(source + " からどこへ")
+                .setItems(zones, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        addRuleAction(source, zones[which]);
+                    }
+                })
+                .show();
+    }
+
+    private void addRuleAction(final String source, final String dest) {
+        new AlertDialog.Builder(this)
+                .setTitle(source + " → " + dest)
+                .setMessage("この通信をどうしますか。\n\n追加したルールは一番下に入ります。"
+                        + "順序が効くので、必要なら上に動かしてください。")
+                .setNegativeButton("Deny（通さない）", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        design.customRules.add(new FirewallRule(source, dest, "any", "any", false));
+                        save();
+                        ruleEditor();
+                    }
+                })
+                .setPositiveButton("Allow（通す）", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        design.customRules.add(new FirewallRule(source, dest, "any", "any", true));
+                        save();
+                        ruleEditor();
                     }
                 })
                 .show();
@@ -897,9 +1193,9 @@ public class MainActivity extends AppCompatActivity {
 
     /** 稼働開始後の設計変更は割増になる。 */
     private void changeDesign(Runnable mutation) {
-        int before = design.cost();
+        int before = design.cost(scenario);
         mutation.run();
-        int after = design.cost();
+        int after = design.cost(scenario);
         String extra = "";
         if (state.day > 0 && after > before) {
             int surcharge = (after - before) / 2;
@@ -907,7 +1203,7 @@ public class MainActivity extends AppCompatActivity {
             extra = "\n\n稼働後の改修のため割増 " + surcharge + " 円が発生しました";
         }
         save();
-        show("設計変更", design.summary() + "\n\n費用 " + totalCost() + " 円 / 予算 "
+        show("設計変更", design.summary(scenario) + "\n\n費用 " + totalCost() + " 円 / 予算 "
                 + budget() + " 円" + extra);
     }
 
@@ -1003,7 +1299,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void runReview() {
         Evaluator.Result result = evaluator.evaluate(scenario, design, state.extraCost, state.extraBudget);
-        StringBuilder sb = new StringBuilder(design.summary()).append("\n\n");
+        StringBuilder sb = new StringBuilder(design.summary(scenario)).append("\n\n");
         for (Evaluator.Finding f : result.findings) {
             sb.append("[").append(f.level).append("] ").append(f.title).append('\n');
             sb.append("  ").append(f.detail).append("\n\n");
@@ -1023,7 +1319,7 @@ public class MainActivity extends AppCompatActivity {
     private void showBrief() {
         StringBuilder sb = new StringBuilder();
         sb.append("Day ").append(state.day).append(" / 信頼 ").append(state.trust).append("\n\n");
-        sb.append(design.summary()).append('\n');
+        sb.append(design.summary(scenario)).append('\n');
         sb.append("費用 ").append(totalCost()).append(" 円");
         if (state.extraCost > 0) {
             sb.append("（後追い改修の割増 ").append(state.extraCost).append(" 円を含む）");
@@ -1040,7 +1336,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void refresh() {
         Incident.Cause active = current != null && !current.resolved ? current.cause : null;
-        topology.update(design, active);
+        topology.update(design, active, scenario);
         tvDay.setText("Day " + state.day + (state.easyMode ? " 簡単" : ""));
         tvTrust.setText("信頼 " + state.trust);
         tvCost.setText("費用 " + (totalCost() / 10000) + "万");
@@ -1084,7 +1380,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private int totalCost() {
-        return design.cost() + state.extraCost;
+        return design.cost(scenario) + state.extraCost;
     }
 
     private int budget() {
@@ -1126,7 +1422,7 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("やめる", null)
                 .setPositiveButton("やり直す", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int which) {
-                        state.reset(MainActivity.this);
+                        state.reset(MainActivity.this, scenario);
                         current = null;
                         for (Scenario.Hidden h : scenario.hidden) {
                             h.revealed = false;
@@ -1137,6 +1433,9 @@ public class MainActivity extends AppCompatActivity {
                         design.dnsRedundant = false;
                         design.serverSharedWithWeb = true;
                         design.proxy = false;
+                        design.remoteVpn = false;
+                        design.vendorOnDemand = false;
+                        design.customRules = null;
                         design.prefixLength = 26;
                         say("「" + scenario.explicitRequirement + "」");
                         refresh();
