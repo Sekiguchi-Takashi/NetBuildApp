@@ -324,7 +324,7 @@ public class Evaluator {
         return false;
     }
 
-    public String describeRules(Design design) {
+    public String describeRules(Scenario scenario, Design design) {
         StringBuilder sb = new StringBuilder("Firewallルール（上から評価）\n");
         List<FirewallRule> rules = design.buildRules(scenario);
         for (int i = 0; i < rules.size(); i++) {

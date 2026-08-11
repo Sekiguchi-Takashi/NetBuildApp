@@ -13,7 +13,7 @@ RouteHQApp の「JSON共有」から本アプリを選ぶと、実測データ�
 
 ## 現在のバージョン
 
-v1.7
+v1.7.1
 
 ## 実装済み
 
@@ -117,6 +117,14 @@ v1.7
 7. `tools/build_docs.sh` で docs を再生成
 
 DNSサーバー（v1.1）がこの手順の実例。差分を追えば次の機器も同じ形で足せる。
+
+### ビルド確認（v1.7.1）
+
+初回のCIビルドで `Evaluator.describeRules` がコンパイルエラーになった。
+`design.buildRules()` を `buildRules(scenario)` に一括置換したとき、scenario を引数に持たない
+メソッドまで巻き込んでいたため。`describeRules(Scenario, Design)` に変更して解消。
+
+同種のスコープ漏れが他に無いことは、全メソッドの変数スコープを走査して確認済み。
 
 ### 段階7：SASE（v1.7）
 

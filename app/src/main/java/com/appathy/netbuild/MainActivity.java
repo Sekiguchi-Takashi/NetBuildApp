@@ -159,7 +159,7 @@ public class MainActivity extends AppCompatActivity {
         actions.add("Firewallルールを確認する");
         handlers.add(new Runnable() {
             public void run() {
-                show("Firewallルール", evaluator.describeRules(design));
+                show("Firewallルール", evaluator.describeRules(scenario, design));
             }
         });
         actions.add("案件の状況を確認する");
@@ -839,7 +839,7 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
             toggleDialog("Firewall",
-                    evaluator.describeRules(design) + "\n来客Denyルール: "
+                    evaluator.describeRules(scenario, design) + "\n来客Denyルール: "
                             + (design.fwGuestDeny ? "あり" : "なし"),
                     design.fwGuestDeny ? "来客Denyルールを外す" : "来客Denyルールを追加する",
                     new Runnable() {
@@ -1052,7 +1052,7 @@ public class MainActivity extends AppCompatActivity {
         items.add("ルール一覧を見る");
         actions.add(new Runnable() {
             public void run() {
-                show("Firewallルール", evaluator.describeRules(design));
+                show("Firewallルール", evaluator.describeRules(scenario, design));
             }
         });
         items.add("Firewallについて");
