@@ -41,6 +41,7 @@ public class Evaluator {
         RuleEngine.Path guestToInternet = engine.canReach(g, "guest", "net");
         RuleEngine.Path internetToWeb = engine.canReach(g, "net", "web");
         RuleEngine.Path internetToPc = engine.canReach(g, "net", "pc");
+        RuleEngine.Path internetToServer = engine.canReach(g, "net", "srv");
 
         if (guestToInternal.reachable) {
             r.findings.add(new Finding("危険", "来客端末から社内PCへ到達できます",
@@ -83,6 +84,27 @@ public class Evaluator {
                     "来客と社員が同一セグメントのため通信はFirewallを通りません。分離はVLAN側で行う必要があります"));
         }
 
+        if (internetToServer.reachable) {
+            r.findings.add(new Finding("危険", "インターネットから社内サーバーへ到達できます",
+                    "公開サーバーと同じ区画に社内サーバーを置いています。"
+                            + "公開側が破られた時点で、顧客情報も同じ区画にあります"));
+            r.securityScore -= 25;
+        } else {
+            r.findings.add(new Finding("良", "社内サーバーが外部から隔離されています",
+                    internetToServer.blockedBy == null ? "経路なし" : internetToServer.blockedBy));
+            r.securityScore += 15;
+        }
+
+        if (design.dnsRedundant) {
+            r.findings.add(new Finding("良", "DNSが冗長化されています",
+                    "1台止まっても名前解決は続きます"));
+            r.scalabilityScore += 10;
+        } else {
+            r.findings.add(new Finding("将来リスク", "DNSが1台しかありません",
+                    "単一障害点。止まると全社が名前解決できなくなります"));
+            r.scalabilityScore -= 10;
+        }
+
         long hosts = design.usableHosts();
         if (hosts < scenario.futureUsers) {
             r.findings.add(new Finding("将来リスク", "IPアドレスが将来不足します",
@@ -123,16 +145,22 @@ public class Evaluator {
         for (boolean vlan : flags) {
             for (boolean dmz : flags) {
                 for (boolean deny : flags) {
-                    for (int prefix : prefixes) {
-                        Design candidate = new Design();
-                        candidate.guestVlan = vlan;
-                        candidate.dmz = dmz;
-                        candidate.fwGuestDeny = deny;
-                        candidate.prefixLength = prefix;
-                        int score = evaluate(scenario, candidate, 0).fitness();
-                        if (score > bestScore) {
-                            bestScore = score;
-                            best = candidate;
+                    for (boolean dns : flags) {
+                        for (boolean shared : flags) {
+                            for (int prefix : prefixes) {
+                                Design candidate = new Design();
+                                candidate.guestVlan = vlan;
+                                candidate.dmz = dmz;
+                                candidate.fwGuestDeny = deny;
+                                candidate.dnsRedundant = dns;
+                                candidate.serverSharedWithWeb = shared;
+                                candidate.prefixLength = prefix;
+                                int score = evaluate(scenario, candidate, 0).fitness();
+                                if (score > bestScore) {
+                                    bestScore = score;
+                                    best = candidate;
+                                }
+                            }
                         }
                     }
                 }

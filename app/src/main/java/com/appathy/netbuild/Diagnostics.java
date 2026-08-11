@@ -14,7 +14,8 @@ public class Diagnostics {
         RESOLVE("名前解決 example.com"),
         DHCP_LEASE("新規端末のDHCP取得を確認"),
         INTERNAL_LOG("社内サーバーのアクセスログを確認"),
-        PUBLIC_LOG("公開サーバーの改ざん検知ログを確認");
+        PUBLIC_LOG("公開サーバーの改ざん検知ログを確認"),
+        EXTERNAL_REACH("外部から社内サーバーに届くか確認");
 
         public final String label;
 
@@ -37,7 +38,10 @@ public class Diagnostics {
             case DHCP_LEASE:
                 return cause != Incident.Cause.IP_EXHAUSTED;
             case INTERNAL_LOG:
-                return cause != Incident.Cause.GUEST_INTRUSION;
+                return cause != Incident.Cause.GUEST_INTRUSION
+                        && cause != Incident.Cause.SERVER_EXPOSED;
+            case EXTERNAL_REACH:
+                return cause != Incident.Cause.SERVER_EXPOSED;
             case PUBLIC_LOG:
                 return cause != Incident.Cause.WEB_COMPROMISE;
             default:
@@ -59,6 +63,8 @@ public class Diagnostics {
                 return normal ? "不審なアクセスなし" : "来客セグメントのIPからの認証試行を多数検出";
             case PUBLIC_LOG:
                 return normal ? "改ざん検知なし" : "公開ディレクトリのファイル改変を検出";
+            case EXTERNAL_REACH:
+                return normal ? "外部からは応答しない" : "外部から共有フォルダに接続できてしまう";
             default:
                 return normal ? "正常" : "異常";
         }

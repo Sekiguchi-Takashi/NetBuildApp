@@ -9,12 +9,17 @@ public class Design {
     public boolean guestVlan = false;
     public boolean dmz = false;
     public boolean fwGuestDeny = false;
+    public boolean dnsRedundant = false;
+    /** 社内サーバーを公開サーバーと同じ区画に置いたままにするか。初期値は同居（安いが危ない）。 */
+    public boolean serverSharedWithWeb = true;
     public int prefixLength = 26;
 
     public static final int COST_BASE = 420000;
     public static final int COST_VLAN = 90000;
     public static final int COST_DMZ = 260000;
     public static final int COST_LARGE_SUBNET = 60000;
+    public static final int COST_DNS_SECONDARY = 40000;
+    public static final int COST_SERVER_SEGMENT = 80000;
 
     public int cost() {
         int total = COST_BASE;
@@ -26,6 +31,12 @@ public class Design {
         }
         if (prefixLength <= 24) {
             total += COST_LARGE_SUBNET;
+        }
+        if (dnsRedundant) {
+            total += COST_DNS_SECONDARY;
+        }
+        if (!serverSharedWithWeb) {
+            total += COST_SERVER_SEGMENT;
         }
         return total;
     }
@@ -50,10 +61,23 @@ public class Design {
         g.node("sw", "switch", "スイッチ").put("zone", "infra");
         g.node("fw", "firewall", "Firewall").put("zone", "infra");
         g.node("net", "internet", "インターネット").put("zone", "internet");
+        // 同居のままだと、社内サーバーは公開サーバーと同じ区画に置かれる
+        String serverZone = serverSharedWithWeb ? (dmz ? "dmz" : "internal") : "internal";
+        String serverVlanId = serverSharedWithWeb ? serverVlan : employeeVlan;
+        g.node("srv", "server", "社内サーバー").put("zone", serverZone).put("vlan", serverVlanId);
+        g.node("dns1", "dns", "DNS").put("zone", "internal").put("vlan", employeeVlan);
+        if (dnsRedundant) {
+            g.node("dns2", "dns", "DNS副").put("zone", "internal").put("vlan", employeeVlan);
+        }
 
         g.edge("pc", "sw", "lan");
         g.edge("guest", "sw", "lan");
         g.edge("web", "sw", "lan");
+        g.edge("srv", "sw", "lan");
+        g.edge("dns1", "sw", "lan");
+        if (dnsRedundant) {
+            g.edge("dns2", "sw", "lan");
+        }
         g.edge("sw", "fw", "uplink");
         g.edge("fw", "net", "wan");
         return g;
@@ -82,6 +106,8 @@ public class Design {
         return "来客VLAN分離: " + (guestVlan ? "あり" : "なし")
                 + " / DMZ: " + (dmz ? "あり" : "なし")
                 + " / 来客Denyルール: " + (fwGuestDeny ? "あり" : "なし")
-                + " / 社内サブネット: /" + prefixLength + "（" + usableHosts() + "台）";
+                + " / 社内サブネット: /" + prefixLength + "（" + usableHosts() + "台）"
+                + " / DNS: " + (dnsRedundant ? "2台" : "1台")
+                + " / 社内サーバー: " + (serverSharedWithWeb ? "公開サーバーと同区画" : "内部に分離");
     }
 }

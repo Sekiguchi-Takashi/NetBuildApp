@@ -112,6 +112,9 @@ public class MainActivity extends AppCompatActivity {
         });
 
         refresh();
+        if (state.day == 0 && scenario.revealedCount() == 0) {
+            tvHint.setText("初めてなら、社員を押して「マニュアルを読む」から始めてください");
+        }
         if (!handleSharedJson(getIntent())) {
             say("「" + scenario.explicitRequirement + "」");
         }
@@ -165,6 +168,18 @@ public class MainActivity extends AppCompatActivity {
                 showBrief();
             }
         });
+        actions.add("マニュアルを読む");
+        handlers.add(new Runnable() {
+            public void run() {
+                manualMenu();
+            }
+        });
+        actions.add("機器の説明を読む");
+        handlers.add(new Runnable() {
+            public void run() {
+                deviceMenu();
+            }
+        });
         actions.add(state.easyMode ? "通常モードに戻す" : "簡単モードにする");
         handlers.add(new Runnable() {
             public void run() {
@@ -193,6 +208,53 @@ public class MainActivity extends AppCompatActivity {
     // ------------------------------------------------------------------
     // クライアント — 要望・個性・ヒント
     // ------------------------------------------------------------------
+
+    private void manualMenu() {
+        final List<Manual> sections = Manual.sections();
+        String[] titles = new String[sections.size()];
+        for (int i = 0; i < sections.size(); i++) {
+            titles[i] = sections.get(i).title;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("マニュアル")
+                .setItems(titles, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        Manual m = sections.get(which);
+                        if (which == sections.size() - 1) {
+                            deviceMenu();
+                            return;
+                        }
+                        show(m.title, m.body);
+                    }
+                })
+                .show();
+    }
+
+    private void deviceMenu() {
+        final List<DeviceGuide> guides = DeviceGuide.entries();
+        String[] titles = new String[guides.size()];
+        for (int i = 0; i < guides.size(); i++) {
+            DeviceGuide g = guides.get(i);
+            titles[i] = g.name + (DeviceGuide.PLANNED.equals(g.status) ? "（未実装）" : "");
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("機器の説明")
+                .setItems(titles, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        DeviceGuide g = guides.get(which);
+                        show(g.name, g.body());
+                    }
+                })
+                .show();
+    }
+
+    /** 図の機器から、その機器の説明を開く。 */
+    private void showDeviceGuide(String key) {
+        DeviceGuide g = DeviceGuide.byKey(key);
+        if (g != null) {
+            show(g.name, g.body());
+        }
+    }
 
     private void toggleEasyMode() {
         state.easyMode = !state.easyMode;
@@ -288,6 +350,8 @@ public class MainActivity extends AppCompatActivity {
                 "DMZは何のためにあるんですか？",
                 "Firewallの暗黙Denyって？",
                 "サブネットの /24 と /26 の違いは？",
+                "DNSを2台にする意味は？",
+                "社内サーバーはどこに置くんですか？",
                 "いまの設計はどこが危ないんですか？",
                 "先輩に戻ってもらう"
         };
@@ -323,6 +387,20 @@ public class MainActivity extends AppCompatActivity {
                 return "どのルールにも当てはまらなかった通信は通さない、という決まりです。\n\n"
                         + "許可を書き忘れると通らない代わりに、書き忘れた危ない通信も通りません。"
                         + "ルールは上から順に見て、最初に当たったものが適用されます。";
+            case 4:
+                return "1台だと、そこが止まった瞬間に全社が名前解決できなくなります。\n\n"
+                        + (design.dnsRedundant
+                        ? "いまは2台あるので、片方が落ちてももう片方が答えます。"
+                        : "いまは1台です。単一障害点というやつで、"
+                        + "この状態だと「サイトが開かない」障害が起きる余地が残っています。")
+                        + "\n\n止まる確率を下げるのではなく、止まっても困らない形にするのが冗長化です。";
+            case 5:
+                return "外に見せるサーバーと、社内だけで使うサーバーは、別の区画に置きます。\n\n"
+                        + (design.serverSharedWithWeb
+                        ? "いまは同じ区画にあります。公開サーバーは外から突かれる前提の場所なので、"
+                        + "そこが破られると、隣にある顧客リストや図面まで同じ手が届く範囲に入ります。"
+                        : "いまは分離できています。公開側が破られても、社内サーバーへは境界をもう一度越える必要があります。")
+                        + "\n\n守り方の基本は、壊される前提で被害の範囲を区切ることです。";
             case 3:
                 return "使えるアドレスの数が変わります。\n\n"
                         + "/26 は 62 台、/24 は 254 台。いまは /" + design.prefixLength
@@ -470,6 +548,20 @@ public class MainActivity extends AppCompatActivity {
                     + "内部に置いたまま外部公開すると、サーバーが破られた時点で社内が同じ区画にあります。"
                     : "DMZ は不要です。";
         }
+        if (design.serverSharedWithWeb != best.serverSharedWithWeb) {
+            return best.serverSharedWithWeb
+                    ? "社内サーバーは同居のままで構いません。"
+                    : "社内サーバーを内部セグメントに分離してください。図の社内サーバーを押します。\n\n"
+                    + "公開サーバーと同じ区画にあると、公開側が破られた時点で顧客リストも同じ場所にあります。"
+                    + "外に出すものと出さないものは、置き場所で分けます。";
+        }
+        if (design.dnsRedundant != best.dnsRedundant) {
+            return best.dnsRedundant
+                    ? "DNSを2台にしてください。図のDNSを押します。\n\n"
+                    + "1台構成だと、そこが止まった時点で全社が名前解決できなくなります。"
+                    + "止めない努力より、止まっても続く形にするほうが確実です。"
+                    : "DNSの冗長化は不要です。";
+        }
         if (design.prefixLength != best.prefixLength) {
             return "内部サブネットを /" + best.prefixLength + " に変えてください。図の社員PCを押します。\n\n"
                     + "将来 " + scenario.futureUsers + " 人まで増える計画なので、/26 の 62 台では足りません。"
@@ -557,7 +649,7 @@ public class MainActivity extends AppCompatActivity {
                                 }
                             });
                         }
-                    });
+                    }, "sw");
         } else if ("web".equals(id)) {
             toggleDialog("Webサーバー",
                     "公開サーバーの置き場所。内部セグメントに置くと、外部公開のために内部への穴を開けることになります。\n\n現在: "
@@ -571,7 +663,7 @@ public class MainActivity extends AppCompatActivity {
                                 }
                             });
                         }
-                    });
+                    }, "web");
         } else if ("fw".equals(id)) {
             toggleDialog("Firewall",
                     evaluator.describeRules(design) + "\n来客Denyルール: "
@@ -585,7 +677,7 @@ public class MainActivity extends AppCompatActivity {
                                 }
                             });
                         }
-                    });
+                    }, "fw");
         } else if ("pc".equals(id)) {
             toggleDialog("社員PC / 内部サブネット",
                     "内部セグメントの広さ。将来の台数に足りるかどうかを決めます。\n\n現在: /"
@@ -599,10 +691,49 @@ public class MainActivity extends AppCompatActivity {
                                 }
                             });
                         }
-                    });
+                    }, "pc");
+        } else if ("srv".equals(id)) {
+            toggleDialog("社内サーバー",
+                    "顧客リストや図面が入っている、社内の人だけが使うサーバーです。\n\n現在: "
+                            + (design.serverSharedWithWeb
+                            ? "公開Webサーバーと同じ区画に置いています"
+                            : "内部セグメントに分離しています"),
+                    design.serverSharedWithWeb ? "内部に分離する（+8万円）" : "同居に戻す（-8万円）",
+                    new Runnable() {
+                        public void run() {
+                            changeDesign(new Runnable() {
+                                public void run() {
+                                    design.serverSharedWithWeb = !design.serverSharedWithWeb;
+                                }
+                            });
+                        }
+                    }, "internal_server");
+        } else if (id.startsWith("dns")) {
+            toggleDialog("DNSサーバー",
+                    "名前をIPアドレスに変える役です。止まると「IPなら通じるのに名前で開けない」状態になります。\n\n現在: "
+                            + (design.dnsRedundant ? "2台構成（冗長化あり）" : "1台構成（単一障害点）"),
+                    design.dnsRedundant ? "1台に戻す（-4万円）" : "2台に増やす（+4万円）",
+                    new Runnable() {
+                        public void run() {
+                            changeDesign(new Runnable() {
+                                public void run() {
+                                    design.dnsRedundant = !design.dnsRedundant;
+                                }
+                            });
+                        }
+                    }, "dns");
         } else if ("net".equals(id)) {
-            show("インターネット", "ISPからの回線。ここは設計で変えられません。\n\n"
-                    + "外部から内部への到達可否は、Firewallのルールと公開サーバーの置き場所で決まります。");
+            new AlertDialog.Builder(this)
+                    .setTitle("インターネット")
+                    .setMessage("ISPからの回線。ここは設計で変えられません。\n\n"
+                            + "外部から内部への到達可否は、Firewallのルールと公開サーバーの置き場所で決まります。")
+                    .setNegativeButton("閉じる", null)
+                    .setNeutralButton("ルーターについて", new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int which) {
+                            showDeviceGuide("router");
+                        }
+                    })
+                    .show();
         }
     }
 
@@ -833,11 +964,17 @@ public class MainActivity extends AppCompatActivity {
         return value > 0 ? "+" + value : String.valueOf(value);
     }
 
-    private void toggleDialog(String title, String body, String action, final Runnable onAction) {
+    private void toggleDialog(String title, String body, String action,
+                              final Runnable onAction, final String guideKey) {
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setMessage(body)
                 .setNegativeButton("閉じる", null)
+                .setNeutralButton("この機器について", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        showDeviceGuide(guideKey);
+                    }
+                })
                 .setPositiveButton(action, new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int which) {
                         onAction.run();
@@ -861,6 +998,8 @@ public class MainActivity extends AppCompatActivity {
                         design.guestVlan = false;
                         design.dmz = false;
                         design.fwGuestDeny = false;
+                        design.dnsRedundant = false;
+                        design.serverSharedWithWeb = true;
                         design.prefixLength = 26;
                         say("「" + scenario.explicitRequirement + "」");
                         refresh();

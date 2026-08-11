@@ -34,6 +34,8 @@ public class GameState {
             d.put("guestVlan", design.guestVlan);
             d.put("dmz", design.dmz);
             d.put("fwGuestDeny", design.fwGuestDeny);
+            d.put("dnsRedundant", design.dnsRedundant);
+            d.put("serverSharedWithWeb", design.serverSharedWithWeb);
             d.put("prefixLength", design.prefixLength);
             root.put("design", d);
 
@@ -84,6 +86,8 @@ public class GameState {
                 design.guestVlan = d.optBoolean("guestVlan");
                 design.dmz = d.optBoolean("dmz");
                 design.fwGuestDeny = d.optBoolean("fwGuestDeny");
+                design.dnsRedundant = d.optBoolean("dnsRedundant");
+                design.serverSharedWithWeb = d.optBoolean("serverSharedWithWeb", true);
                 design.prefixLength = d.optInt("prefixLength", 26);
             }
             JSONArray revealed = root.optJSONArray("revealed");

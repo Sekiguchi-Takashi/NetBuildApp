@@ -18,7 +18,9 @@ public class IncidentEngine {
         List<Incident.Cause> list = new ArrayList<>();
         list.add(Incident.Cause.LINK_DOWN);
         list.add(Incident.Cause.WAN_DOWN);
-        list.add(Incident.Cause.DNS_DOWN);
+        if (!design.dnsRedundant) {
+            list.add(Incident.Cause.DNS_DOWN);
+        }
         if (design.usableHosts() < scenario.futureUsers) {
             list.add(Incident.Cause.IP_EXHAUSTED);
         }
@@ -27,6 +29,9 @@ public class IncidentEngine {
         }
         if (!design.dmz) {
             list.add(Incident.Cause.WEB_COMPROMISE);
+        }
+        if (design.serverSharedWithWeb) {
+            list.add(Incident.Cause.SERVER_EXPOSED);
         }
         return list;
     }
@@ -57,6 +62,7 @@ public class IncidentEngine {
     public boolean isWeaknessCause(Incident.Cause c) {
         return c == Incident.Cause.IP_EXHAUSTED
                 || c == Incident.Cause.GUEST_INTRUSION
-                || c == Incident.Cause.WEB_COMPROMISE;
+                || c == Incident.Cause.WEB_COMPROMISE
+                || c == Incident.Cause.SERVER_EXPOSED;
     }
 }

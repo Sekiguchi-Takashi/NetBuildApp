@@ -14,13 +14,49 @@ import android.view.View;
 import androidx.core.content.ContextCompat;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * ステータス盤。設計の選択と障害の状態をそのまま図にする。
  * 触る場所ではなく、見て分かるための領域。
  */
 public class TopologyView extends View {
+
+    /**
+     * 機器の見た目の登録表。
+     * 機器を増やすときは、ここに1行足して Design.buildGraph() にノードを追加すれば図に出る。
+     */
+    private static class Slot {
+        final int iconRes;
+        final float portraitX;
+        final float portraitY;
+        final float landscapeX;
+        final float landscapeY;
+
+        Slot(int iconRes, float px, float py, float lx, float ly) {
+            this.iconRes = iconRes;
+            this.portraitX = px;
+            this.portraitY = py;
+            this.landscapeX = lx;
+            this.landscapeY = ly;
+        }
+    }
+
+    private static final Map<String, Slot> SLOTS = new LinkedHashMap<>();
+
+    static {
+        SLOTS.put("guest", new Slot(R.drawable.ic_guest, 0.13f, 0.14f, 0.07f, 0.20f));
+        SLOTS.put("pc", new Slot(R.drawable.ic_pc, 0.13f, 0.66f, 0.07f, 0.74f));
+        SLOTS.put("sw", new Slot(R.drawable.ic_switch, 0.44f, 0.40f, 0.34f, 0.46f));
+        SLOTS.put("fw", new Slot(R.drawable.node_firewall, 0.78f, 0.40f, 0.64f, 0.46f));
+        SLOTS.put("net", new Slot(R.drawable.ic_cloud, 0.80f, 0.06f, 0.92f, 0.14f));
+        SLOTS.put("web", new Slot(R.drawable.ic_server, 0.56f, 0.80f, 0.44f, 0.86f));
+        SLOTS.put("srv", new Slot(R.drawable.ic_server, 0.30f, 0.86f, 0.24f, 0.88f));
+        SLOTS.put("dns1", new Slot(R.drawable.ic_server, 0.86f, 0.72f, 0.66f, 0.86f));
+        SLOTS.put("dns2", new Slot(R.drawable.ic_server, 0.86f, 0.94f, 0.85f, 0.86f));
+    }
 
     private static class Spot {
         final String id;
@@ -82,19 +118,6 @@ public class TopologyView extends View {
     public TopologyView(Context context, AttributeSet attrs) {
         super(context, attrs);
         density = getResources().getDisplayMetrics().density;
-
-        spots.add(new Spot("guest", "来客端末", R.drawable.ic_guest, 0.14f, 0.16f, 0.08f, 0.22f));
-        spots.add(new Spot("pc", "社員PC", R.drawable.ic_pc, 0.14f, 0.72f, 0.08f, 0.78f));
-        spots.add(new Spot("sw", "スイッチ", R.drawable.ic_switch, 0.44f, 0.44f, 0.34f, 0.50f));
-        spots.add(new Spot("fw", "Firewall", R.drawable.node_firewall, 0.76f, 0.44f, 0.64f, 0.50f));
-        spots.add(new Spot("net", "インターネット", R.drawable.ic_cloud, 0.80f, 0.10f, 0.92f, 0.18f));
-        spots.add(new Spot("web", "Webサーバー", R.drawable.ic_server, 0.60f, 0.82f, 0.44f, 0.88f));
-
-        links.add(new Link("guest", "sw", "guest"));
-        links.add(new Link("pc", "sw", "internal"));
-        links.add(new Link("web", "sw", "server"));
-        links.add(new Link("sw", "fw", "uplink"));
-        links.add(new Link("fw", "net", "wan"));
 
         line.setStyle(Paint.Style.STROKE);
         line.setStrokeWidth(3f * density);
@@ -173,10 +196,55 @@ public class TopologyView extends View {
         this.design = design;
         this.cause = cause;
         NetGraph g = design.buildGraph();
+        rebuild(g);
         RuleEngine engine = new RuleEngine(design.buildRules());
         guestReachesInternal = engine.canReach(g, "guest", "pc").reachable;
         internetReachesInternal = engine.canReach(g, "net", "pc").reachable;
         invalidate();
+    }
+
+    /** 図の中身をグラフから作り直す。ノードが増えても描画側は変更不要。 */
+    private void rebuild(NetGraph g) {
+        spots.clear();
+        links.clear();
+        for (NetGraph.Node n : g.nodes) {
+            Slot slot = SLOTS.get(n.id);
+            if (slot != null) {
+                spots.add(new Spot(n.id, n.label, slot.iconRes,
+                        slot.portraitX, slot.portraitY, slot.landscapeX, slot.landscapeY));
+            }
+        }
+        List<String> seen = new ArrayList<>();
+        for (NetGraph.Edge e : g.edges) {
+            String key = e.from.compareTo(e.to) < 0 ? e.from + "|" + e.to : e.to + "|" + e.from;
+            if (seen.contains(key) || SLOTS.get(e.from) == null || SLOTS.get(e.to) == null) {
+                continue;
+            }
+            seen.add(key);
+            links.add(new Link(e.from, e.to, kindOf(g, e)));
+        }
+        layoutSpots();
+    }
+
+    /** 線の意味づけ。どちら側の機器かで色を変えるために使う。 */
+    private String kindOf(NetGraph g, NetGraph.Edge e) {
+        NetGraph.Node a = g.find(e.from);
+        NetGraph.Node b = g.find(e.to);
+        String zoneA = a == null ? "" : String.valueOf(a.attr("zone"));
+        String zoneB = b == null ? "" : String.valueOf(b.attr("zone"));
+        if ("guest".equals(zoneA) || "guest".equals(zoneB)) {
+            return "guest";
+        }
+        if ("dmz".equals(zoneA) || "dmz".equals(zoneB)) {
+            return "server";
+        }
+        if ("internet".equals(zoneA) || "internet".equals(zoneB)) {
+            return "wan";
+        }
+        if ("firewall".equals(a == null ? "" : a.type) || "firewall".equals(b == null ? "" : b.type)) {
+            return "uplink";
+        }
+        return "internal";
     }
 
     /**
@@ -218,13 +286,9 @@ public class TopologyView extends View {
         int h = getHeight();
         layoutSpots();
 
-        drawLink(canvas, "guest", "sw", design.guestVlan ? "#E0B15C" : "#5A6472",
-                cause == Incident.Cause.GUEST_INTRUSION);
-        drawLink(canvas, "pc", "sw", "#5A6472", false);
-        drawLink(canvas, "web", "sw", design.dmz ? "#7FD1B9" : "#5A6472",
-                cause == Incident.Cause.WEB_COMPROMISE);
-        drawLink(canvas, "sw", "fw", "#5A6472", cause == Incident.Cause.LINK_DOWN);
-        drawLink(canvas, "fw", "net", "#5A6472", cause == Incident.Cause.WAN_DOWN);
+        for (Link l : links) {
+            drawLink(canvas, l.a, l.b, colorOf(l), faultyLink(l));
+        }
 
         if (guestReachesInternal) {
             drawDanger(canvas, "guest", "pc", "来客→社内 到達");
@@ -247,6 +311,38 @@ public class TopologyView extends View {
             text.setColor(Color.parseColor("#7FD1B9"));
             canvas.drawText("DMZ", spots.get(5).px, spots.get(5).py + 40 * density, text);
             text.setColor(Color.parseColor("#C8D4E0"));
+        }
+    }
+
+    private String colorOf(Link l) {
+        if ("guest".equals(l.kind)) {
+            return design.guestVlan ? "#E0B15C" : "#5A6472";
+        }
+        if ("server".equals(l.kind)) {
+            return "#7FD1B9";
+        }
+        return "#5A6472";
+    }
+
+    private boolean faultyLink(Link l) {
+        if (cause == null) {
+            return false;
+        }
+        switch (cause) {
+            case LINK_DOWN:
+                return "uplink".equals(l.kind);
+            case WAN_DOWN:
+                return "wan".equals(l.kind);
+            case GUEST_INTRUSION:
+                return "guest".equals(l.kind);
+            case WEB_COMPROMISE:
+                return "web".equals(l.a) || "web".equals(l.b);
+            case DNS_DOWN:
+                return l.a.startsWith("dns") || l.b.startsWith("dns");
+            case SERVER_EXPOSED:
+                return "srv".equals(l.a) || "srv".equals(l.b);
+            default:
+                return false;
         }
     }
 
