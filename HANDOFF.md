@@ -1,6 +1,18 @@
 # NetBuildApp HANDOFF
 
-## 位置づけ
+## 位置づけ（v1.8で統合）
+
+**RouteHQApp は NetBuildApp に統合済み。別リポジトリは不要。**
+実機診断のクラス（DeviceNetworkCollector / ProbeRunner / SubnetCalc）をパッケージごと移植し、
+`RealDiagnosis` でゲームの観点に接続した。社員メニューの「いま使っているネットワークを見る」から実行。
+
+- 設定を見るだけ（通信しない）と、疎通も測る（ping / 名前解決 / TCP）の2モード
+- 実測結果はゲームと同じ NetGraph に入るので、判定の目線が揃う
+- 実機の所見をゲームの論点に結びつける文言は `RealDiagnosis.review()` に集約。
+  DNS単一障害点・サブネット収容数・VPN経由・来客SSID の4つを扱う
+- 他アプリから NetGraph JSON を受け取る口（DeviceReview + ACTION_SEND）は残してある
+
+## 旧・位置づけ
 
 ネットワーク構築ゲーム本体（学習目的）。実機測定アプリ **RouteHQApp** とは別リポジトリで、
 共有するのは `NetGraph` スキーマ（schema: netgraph/1）のみ。
@@ -13,7 +25,7 @@ RouteHQApp の「JSON共有」から本アプリを選ぶと、実測データ�
 
 ## 現在のバージョン
 
-v1.7.2
+v1.8
 
 ## 実装済み
 

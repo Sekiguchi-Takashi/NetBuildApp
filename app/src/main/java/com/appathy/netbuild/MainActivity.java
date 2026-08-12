@@ -1,12 +1,19 @@
 package com.appathy.netbuild;
 
+import android.Manifest;
 import android.content.DialogInterface;
+import android.content.pm.PackageManager;
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.OnApplyWindowInsetsListener;
 import androidx.core.view.ViewCompat;
@@ -17,6 +24,8 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 画面に出しっぱなしにするのは図・状態帯・2人のキャラだけ。
@@ -30,6 +39,9 @@ public class MainActivity extends AppCompatActivity {
     private final IncidentEngine incidents = new IncidentEngine();
     private final Diagnostics diagnostics = new Diagnostics();
     private final GameState state = new GameState();
+    private final RealDiagnosis realDiagnosis = new RealDiagnosis();
+    private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final Handler main = new Handler(Looper.getMainLooper());
 
     private TopologyView topology;
     private ImageView charaStaff;
@@ -168,6 +180,12 @@ public class MainActivity extends AppCompatActivity {
                 showBrief();
             }
         });
+        actions.add("いま使っているネットワークを見る");
+        handlers.add(new Runnable() {
+            public void run() {
+                realDiagnosisMenu();
+            }
+        });
         actions.add("案件を切り替える");
         handlers.add(new Runnable() {
             public void run() {
@@ -216,6 +234,69 @@ public class MainActivity extends AppCompatActivity {
     // ------------------------------------------------------------------
 
     /** 案件ごとに前提（境界をどこに置くか）が違う。進行も案件ごとに分けて保存される。 */
+    /**
+     * ゲームで扱っている観点を、いま自分がつないでいるネットワークに当てる。
+     * 練習と実物を同じ目線で見るための機能。
+     */
+    private void realDiagnosisMenu() {
+        final String[] items = {
+                "設定を見る（通信しない）",
+                "疎通も測る（ping・名前解決）",
+                "権限について"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("いま使っているネットワーク")
+                .setItems(items, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (which == 2) {
+                            show("権限について",
+                                    "接続先のSSIDを読むには位置情報の権限が要ります。"
+                                            + "Androidの仕様で、Wi-Fi情報が位置の手がかりになるためです。\n\n"
+                                            + "許可しない場合もIPアドレスやルーティングは読めますが、"
+                                            + "SSIDは「不明」と表示されます。\n\n"
+                                            + "取得した内容はこの端末の中だけで扱います。");
+                            return;
+                        }
+                        requestNetworkPermissions();
+                        runRealDiagnosis(which == 1);
+                    }
+                })
+                .show();
+    }
+
+    private void runRealDiagnosis(final boolean probe) {
+        show("測定中", probe ? "疎通を確認しています。数秒かかります。" : "接続情報を読んでいます。");
+        worker.execute(new Runnable() {
+            public void run() {
+                final RealDiagnosis.Report report = probe
+                        ? realDiagnosis.probe(MainActivity.this)
+                        : realDiagnosis.inspect(MainActivity.this);
+                main.post(new Runnable() {
+                    public void run() {
+                        show(probe ? "実機の診断結果" : "実機の接続情報",
+                                realDiagnosis.format(report, probe));
+                    }
+                });
+            }
+        });
+    }
+
+    private void requestNetworkPermissions() {
+        List<String> missing = new ArrayList<>();
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            missing.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
+        if (Build.VERSION.SDK_INT >= 33
+                && ContextCompat.checkSelfPermission(this, Manifest.permission.NEARBY_WIFI_DEVICES)
+                != PackageManager.PERMISSION_GRANTED) {
+            missing.add(Manifest.permission.NEARBY_WIFI_DEVICES);
+        }
+        if (!missing.isEmpty()) {
+            ActivityCompat.requestPermissions(this, missing.toArray(new String[0]), 1001);
+        }
+    }
+
     private void switchScenario() {
         final List<Scenario> all = Scenario.all();
         String[] labels = new String[all.size()];

@@ -76,8 +76,16 @@ public class NetGraph {
         public final String method;
         public final boolean reached;
         public final String detail;
+        /** 実測にかかった時間。ゲーム内の経路には 0 が入る。 */
+        public final long millis;
 
         public Reachability(String from, String to, String method, boolean reached, String detail) {
+            this(from, to, method, reached, detail, 0);
+        }
+
+        public Reachability(String from, String to, String method, boolean reached,
+                            String detail, long millis) {
+            this.millis = millis;
             this.from = from;
             this.to = to;
             this.method = method;
@@ -127,7 +135,51 @@ public class NetGraph {
         return out;
     }
 
-    /** RouteHQApp が共有した JSON を読み込む。 */
+    /** 実測結果を書き出す。他アプリへ渡すときに使う。 */
+    public String toJson(int indent) {
+        try {
+            JSONObject root = new JSONObject();
+            root.put("schema", "netgraph/1");
+            root.put("source", source);
+            JSONArray ns = new JSONArray();
+            for (Node n : nodes) {
+                JSONObject o = new JSONObject();
+                o.put("id", n.id);
+                o.put("type", n.type);
+                o.put("label", n.label);
+                o.put("attrs", new JSONObject(n.attrs));
+                ns.put(o);
+            }
+            root.put("nodes", ns);
+            JSONArray rs = new JSONArray();
+            for (Route r : routes) {
+                JSONObject o = new JSONObject();
+                o.put("destination", r.destination);
+                o.put("gateway", r.gateway == null ? JSONObject.NULL : r.gateway);
+                o.put("interface", r.iface == null ? JSONObject.NULL : r.iface);
+                o.put("default", r.defaultRoute);
+                rs.put(o);
+            }
+            root.put("routes", rs);
+            JSONArray cs = new JSONArray();
+            for (Reachability c : reachability) {
+                JSONObject o = new JSONObject();
+                o.put("from", c.from);
+                o.put("to", c.to);
+                o.put("method", c.method);
+                o.put("reached", c.reached);
+                o.put("detail", c.detail == null ? JSONObject.NULL : c.detail);
+                cs.put(o);
+            }
+            root.put("reachability", cs);
+            root.put("notes", new JSONArray(notes));
+            return indent > 0 ? root.toString(indent) : root.toString();
+        } catch (JSONException e) {
+            return "{}";
+        }
+    }
+
+    /** 他アプリから共有された JSON を読み込む。 */
     public static NetGraph fromJson(String json) throws JSONException {
         JSONObject root = new JSONObject(json);
         NetGraph g = new NetGraph(root.optString("source", SOURCE_DEVICE));
