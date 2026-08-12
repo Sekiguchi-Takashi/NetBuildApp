@@ -62,6 +62,8 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvHint;
 
     private Incident current;
+    private AlertDialog progressDialog;
+    private boolean stopped;
     private Stakeholder speaker = Stakeholder.CLIENT;
     private Ally ally = Ally.STAFF;
 
@@ -254,8 +256,11 @@ public class MainActivity extends AppCompatActivity {
                 .setItems(items, new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int which) {
                         if (which == 2) {
-                            requestNetworkPermissions();
-                            startRealQuiz();
+                            withNetworkPermissions(new Runnable() {
+                                public void run() {
+                                    startRealQuiz();
+                                }
+                            });
                             return;
                         }
                         if (which == 3) {
@@ -267,8 +272,12 @@ public class MainActivity extends AppCompatActivity {
                                             + "取得した内容はこの端末の中だけで扱います。");
                             return;
                         }
-                        requestNetworkPermissions();
-                        runRealDiagnosis(which == 1);
+                        final boolean probe = which == 1;
+                        withNetworkPermissions(new Runnable() {
+                            public void run() {
+                                runRealDiagnosis(probe);
+                            }
+                        });
                     }
                 })
                 .show();
@@ -276,13 +285,17 @@ public class MainActivity extends AppCompatActivity {
 
     /** 測定してから、その環境に合わせた問題を出す。 */
     private void startRealQuiz() {
-        show("準備中", "この環境を測ってから出題します。");
+        showProgress("準備中", "この環境を測ってから出題します。");
         worker.execute(new Runnable() {
             public void run() {
                 final RealDiagnosis.Report report = realDiagnosis.probe(MainActivity.this);
                 final List<RealQuiz.Question> made = realQuiz.build(report.graph);
                 main.post(new Runnable() {
                     public void run() {
+                        dismissProgress();
+                        if (!alive()) {
+                            return;
+                        }
                         if (made.isEmpty()) {
                             show("出題できません",
                                     "接続情報を十分に読めませんでした。"
@@ -338,7 +351,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void runRealDiagnosis(final boolean probe) {
-        show("測定中", probe ? "疎通を確認しています。数秒かかります。" : "接続情報を読んでいます。");
+        showProgress("測定中", probe ? "疎通を確認しています。数秒かかります。" : "接続情報を読んでいます。");
         worker.execute(new Runnable() {
             public void run() {
                 final RealDiagnosis.Report report = probe
@@ -346,6 +359,7 @@ public class MainActivity extends AppCompatActivity {
                         : realDiagnosis.inspect(MainActivity.this);
                 main.post(new Runnable() {
                     public void run() {
+                        dismissProgress();
                         show(probe ? "実機の診断結果" : "実機の接続情報",
                                 realDiagnosis.format(report, probe));
                     }
@@ -354,7 +368,25 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void requestNetworkPermissions() {
+    private static final int REQ_NETWORK_PERMISSIONS = 1001;
+    /** 権限の許可を待ってから実行したい処理。 */
+    private Runnable pendingAfterPermission;
+
+    /**
+     * 権限が揃っていればそのまま実行し、足りなければ要求してから実行する。
+     * 許可ダイアログは非同期なので、待たずに測ると初回だけSSIDが読めない。
+     */
+    private void withNetworkPermissions(Runnable action) {
+        if (missingPermissions().isEmpty()) {
+            action.run();
+            return;
+        }
+        pendingAfterPermission = action;
+        ActivityCompat.requestPermissions(this,
+                missingPermissions().toArray(new String[0]), REQ_NETWORK_PERMISSIONS);
+    }
+
+    private List<String> missingPermissions() {
         List<String> missing = new ArrayList<>();
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -365,9 +397,37 @@ public class MainActivity extends AppCompatActivity {
                 != PackageManager.PERMISSION_GRANTED) {
             missing.add(Manifest.permission.NEARBY_WIFI_DEVICES);
         }
-        if (!missing.isEmpty()) {
-            ActivityCompat.requestPermissions(this, missing.toArray(new String[0]), 1001);
+        return missing;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode != REQ_NETWORK_PERMISSIONS) {
+            return;
         }
+        Runnable action = pendingAfterPermission;
+        pendingAfterPermission = null;
+        if (action != null) {
+            action.run();
+        }
+    }
+
+
+    /** 設計を初期値に戻す。案件をまたいで値が残らないようにする。 */
+    private void resetDesign() {
+        design.guestVlan = false;
+        design.dmz = false;
+        design.fwGuestDeny = false;
+        design.dnsRedundant = false;
+        design.serverSharedWithWeb = true;
+        design.proxy = false;
+        design.remoteVpn = false;
+        design.vendorOnDemand = false;
+        design.saseBypass = true;
+        design.ztna = false;
+        design.prefixLength = 26;
+        design.customRules = null;
     }
 
     private void switchScenario() {
@@ -387,7 +447,10 @@ public class MainActivity extends AppCompatActivity {
                             return;
                         }
                         scenario = picked;
-                        design.customRules = null;
+                        resetDesign();
+                        for (Scenario.Hidden h : scenario.hidden) {
+                            h.revealed = false;
+                        }
                         current = state.load(MainActivity.this, design, scenario);
                         refresh();
                         show(scenario.client,
@@ -1525,7 +1588,35 @@ public class MainActivity extends AppCompatActivity {
         tvBubble.setText(line);
     }
 
+    /** 測定中の表示。結果が出たら dismissProgress() で必ず閉じる。 */
+    private void showProgress(String title, String body) {
+        dismissProgress();
+        progressDialog = new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(body)
+                .setCancelable(false)
+                .create();
+        progressDialog.show();
+    }
+
+    private void dismissProgress() {
+        if (progressDialog != null) {
+            if (progressDialog.isShowing()) {
+                progressDialog.dismiss();
+            }
+            progressDialog = null;
+        }
+    }
+
+    /** 画面が生きているときだけダイアログを出す。測定中に離れても落ちないようにする。 */
+    private boolean alive() {
+        return !stopped && !isFinishing() && !isDestroyed();
+    }
+
     private void show(String title, String body) {
+        if (!alive()) {
+            return;
+        }
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setMessage(body)
@@ -1581,21 +1672,32 @@ public class MainActivity extends AppCompatActivity {
                         for (Scenario.Hidden h : scenario.hidden) {
                             h.revealed = false;
                         }
-                        design.guestVlan = false;
-                        design.dmz = false;
-                        design.fwGuestDeny = false;
-                        design.dnsRedundant = false;
-                        design.serverSharedWithWeb = true;
-                        design.proxy = false;
-                        design.remoteVpn = false;
-                        design.vendorOnDemand = false;
-                        design.customRules = null;
-                        design.prefixLength = 26;
+                        resetDesign();
                         say("「" + scenario.explicitRequirement + "」");
                         refresh();
                     }
                 })
                 .show();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        stopped = false;
+    }
+
+    @Override
+    protected void onStop() {
+        stopped = true;
+        dismissProgress();
+        super.onStop();
+    }
+
+    @Override
+    protected void onDestroy() {
+        worker.shutdownNow();
+        main.removeCallbacksAndMessages(null);
+        super.onDestroy();
     }
 
     @Override

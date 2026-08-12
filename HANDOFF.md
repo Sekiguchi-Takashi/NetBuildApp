@@ -1,5 +1,20 @@
 # NetBuildApp HANDOFF
 
+## 実行時バグ修正（v1.9.1）
+
+初回のCIビルドが通り実機で動作したあと、実行時の不具合を4件修正した。
+
+1. 測定中ダイアログが閉じない → `showProgress` / `dismissProgress` を用意し、結果表示前に必ず閉じる
+2. 初回だけSSIDが読めない → `withNetworkPermissions(Runnable)` に集約し、
+   `onRequestPermissionsResult` で許可を受け取ってから実行する
+3. 案件を切り替えると設計と進行が混ざる → `resetDesign()` を用意し、
+   `GameState.load` は保存が無ければ `clear()` で進行も初期化する
+4. 測定中に画面を離れると落ちる → `stopped` フラグと `alive()` 判定、
+   `onStop` でダイアログを閉じ、`onDestroy` で worker を停止して Handler を空にする
+
+**この種の不具合は静的チェックでは出ない。** 実機で「測定中に戻る」「案件を往復する」
+「権限を初回に許可する」の3操作を通すと大半が表に出る。
+
 ## 位置づけ（v1.8で統合）
 
 **RouteHQApp は NetBuildApp に統合済み。別リポジトリは不要。**
@@ -28,7 +43,7 @@ RouteHQApp の「JSON共有」から本アプリを選ぶと、実測データ�
 
 ## 現在のバージョン
 
-v1.9
+v1.9.1
 
 ## 実装済み
 

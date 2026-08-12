@@ -93,6 +93,8 @@ public class GameState {
     public Incident load(Context context, Design design, Scenario scenario) {
         String stored = prefs(context).getString(keyFor(scenario), null);
         if (stored == null) {
+            // その案件の記録が無いときは、前の案件の進行を引き継がない
+            clear();
             return null;
         }
         try {
@@ -183,14 +185,19 @@ public class GameState {
         return list;
     }
 
-    public void reset(Context context, Scenario scenario) {
-        prefs(context).edit().remove(keyFor(scenario)).apply();
+    /** メモリ上の進行だけを初期化する。保存データには触らない。 */
+    private void clear() {
         day = 0;
         trust = 50;
         extraCost = 0;
         extraBudget = 0;
         negotiations = 0;
         occurredFaults.clear();
+    }
+
+    public void reset(Context context, Scenario scenario) {
+        prefs(context).edit().remove(keyFor(scenario)).apply();
+        clear();
     }
 
     private SharedPreferences prefs(Context context) {
