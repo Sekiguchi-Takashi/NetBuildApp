@@ -40,6 +40,10 @@ public class MainActivity extends AppCompatActivity {
     private final Diagnostics diagnostics = new Diagnostics();
     private final GameState state = new GameState();
     private final RealDiagnosis realDiagnosis = new RealDiagnosis();
+    private final RealQuiz realQuiz = new RealQuiz();
+    private List<RealQuiz.Question> quiz;
+    private int quizIndex;
+    private int quizCorrect;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
 
@@ -242,6 +246,7 @@ public class MainActivity extends AppCompatActivity {
         final String[] items = {
                 "設定を見る（通信しない）",
                 "疎通も測る（ping・名前解決）",
+                "この環境で出題してもらう",
                 "権限について"
         };
         new AlertDialog.Builder(this)
@@ -249,6 +254,11 @@ public class MainActivity extends AppCompatActivity {
                 .setItems(items, new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int which) {
                         if (which == 2) {
+                            requestNetworkPermissions();
+                            startRealQuiz();
+                            return;
+                        }
+                        if (which == 3) {
                             show("権限について",
                                     "接続先のSSIDを読むには位置情報の権限が要ります。"
                                             + "Androidの仕様で、Wi-Fi情報が位置の手がかりになるためです。\n\n"
@@ -261,6 +271,69 @@ public class MainActivity extends AppCompatActivity {
                         runRealDiagnosis(which == 1);
                     }
                 })
+                .show();
+    }
+
+    /** 測定してから、その環境に合わせた問題を出す。 */
+    private void startRealQuiz() {
+        show("準備中", "この環境を測ってから出題します。");
+        worker.execute(new Runnable() {
+            public void run() {
+                final RealDiagnosis.Report report = realDiagnosis.probe(MainActivity.this);
+                final List<RealQuiz.Question> made = realQuiz.build(report.graph);
+                main.post(new Runnable() {
+                    public void run() {
+                        if (made.isEmpty()) {
+                            show("出題できません",
+                                    "接続情報を十分に読めませんでした。"
+                                            + "ネットワークにつないだ状態で、位置情報の権限を許可してから試してください。");
+                            return;
+                        }
+                        quiz = made;
+                        quizIndex = 0;
+                        quizCorrect = 0;
+                        askQuizQuestion();
+                    }
+                });
+            }
+        });
+    }
+
+    private void askQuizQuestion() {
+        if (quizIndex >= quiz.size()) {
+            show("結果", quiz.size() + " 問中 " + quizCorrect + " 問正解でした。\n\n"
+                    + (quizCorrect == quiz.size()
+                    ? "いま使っているネットワークの性質は把握できています。"
+                    : "間違えたところは、社員を押して「マニュアルを読む」か"
+                    + "新人に交代して用語を確認してみてください。"));
+            return;
+        }
+        final RealQuiz.Question q = quiz.get(quizIndex);
+        new AlertDialog.Builder(this)
+                .setTitle("第 " + (quizIndex + 1) + " 問 / " + quiz.size())
+                .setMessage(q.text)
+                .setItems(q.choices.toArray(new String[0]), new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        boolean right = which == q.answer;
+                        if (right) {
+                            quizCorrect++;
+                        }
+                        quizIndex++;
+                        new AlertDialog.Builder(MainActivity.this)
+                                .setTitle(right ? "正解" : "不正解")
+                                .setMessage((right ? "" : "正解は「" + q.choices.get(q.answer) + "」です。\n\n")
+                                        + q.explanation)
+                                .setPositiveButton(quizIndex >= quiz.size() ? "結果を見る" : "次へ",
+                                        new DialogInterface.OnClickListener() {
+                                            public void onClick(DialogInterface d, int w) {
+                                                askQuizQuestion();
+                                            }
+                                        })
+                                .setCancelable(false)
+                                .show();
+                    }
+                })
+                .setCancelable(false)
                 .show();
     }
 
