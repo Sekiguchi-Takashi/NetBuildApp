@@ -186,6 +186,20 @@ public class MainActivity extends AppCompatActivity {
                 showBrief();
             }
         });
+        if (state.day > 0) {
+            actions.add("この案件を納品する");
+            handlers.add(new Runnable() {
+                public void run() {
+                    confirmDeliver();
+                }
+            });
+        }
+        actions.add("これまでの成績を見る");
+        handlers.add(new Runnable() {
+            public void run() {
+                resultsMenu();
+            }
+        });
         actions.add("いま使っているネットワークを見る");
         handlers.add(new Runnable() {
             public void run() {
@@ -244,6 +258,122 @@ public class MainActivity extends AppCompatActivity {
      * ゲームで扱っている観点を、いま自分がつないでいるネットワークに当てる。
      * 練習と実物を同じ目線で見るための機能。
      */
+    /**
+     * 案件を締める。納品するとその時点の成績が残る。
+     * 未解決の障害を抱えたままでは締められない。
+     */
+    private void confirmDeliver() {
+        if (current != null && !current.resolved) {
+            show("納品できません",
+                    "対応中の障害があります。原因を突き止めてから納品してください。\n\n"
+                            + "「" + current.cause.symptom + "」");
+            return;
+        }
+        Evaluator.Result r = evaluator.evaluate(scenario, design, state.extraCost, state.extraBudget);
+        int max = evaluator.maxFitness(scenario, state.extraBudget);
+        int unheard = scenario.hidden.size() - scenario.revealedCount();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Day ").append(state.day).append(" 時点で納品します。\n\n");
+        sb.append("案件適合度 ").append(r.fitness()).append(" / 満点 ").append(max).append('\n');
+        sb.append("信頼 ").append(state.trust).append('\n');
+        sb.append("費用 ").append(r.cost).append(" 円 / 予算 ").append(budget()).append(" 円\n");
+        if (unheard > 0) {
+            sb.append("\n未確認の要望が ").append(unheard).append(" 件あります。")
+                    .append("聞いてから納品したほうが点数は上がります。");
+        }
+        sb.append("\n\n納品後もこの案件は続けられますが、成績は納品した時点のものが残ります。");
+
+        new AlertDialog.Builder(this)
+                .setTitle("納品の確認")
+                .setMessage(sb.toString())
+                .setNegativeButton("やめる", null)
+                .setPositiveButton("納品する", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        deliver();
+                    }
+                })
+                .show();
+    }
+
+    private void deliver() {
+        Evaluator.Result r = evaluator.evaluate(scenario, design, state.extraCost, state.extraBudget);
+        int max = evaluator.maxFitness(scenario, state.extraBudget);
+        GameState.Result result = new GameState.Result(scenario.id, scenario.client,
+                r.fitness(), max, state.trust, r.cost, budget(),
+                state.day, state.occurredFaults.size());
+        state.saveResult(this, scenario, result);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("評価 ").append(result.rank()).append("\n\n");
+        sb.append("案件適合度 ").append(result.score).append(" / ").append(result.max).append('\n');
+        sb.append("信頼 ").append(result.trust).append('\n');
+        sb.append("費用 ").append(result.cost).append(" 円\n");
+        sb.append("稼働 ").append(result.days).append(" 日\n");
+        if (result.faults > 0) {
+            sb.append("設計が原因の障害 ").append(result.faults).append(" 種\n");
+        }
+        sb.append('\n').append(comment(result));
+        say("「ありがとうございました」");
+        show("納品しました", sb.toString());
+    }
+
+    private String comment(GameState.Result r) {
+        if (r.trust < 50) {
+            return "動くものは納めましたが、途中の障害対応で信頼を落としました。"
+                    + "設計の弱点を先に潰しておけば、呼ばれる回数自体が減ります。";
+        }
+        if (r.score >= r.max) {
+            return "満点です。要望を聞き切り、危ない経路を残さず、予算にも収めました。";
+        }
+        if (r.score >= r.max * 8 / 10) {
+            return "おおむね良い設計です。設計レビューの指摘を見直すと、あと少し詰められます。";
+        }
+        if (r.score >= r.max * 6 / 10) {
+            return "動きますが、危ない経路か将来の余裕のどちらかが残っています。";
+        }
+        return "要望の確認か、経路の遮断が足りていません。"
+                + "新人に交代して用語を確認してから、もう一度組み直してみてください。";
+    }
+
+    private void resultsMenu() {
+        final List<Scenario> all = Scenario.all();
+        List<String> labels = new ArrayList<>();
+        final List<GameState.Result> results = new ArrayList<>();
+        for (Scenario sc : all) {
+            GameState.Result r = state.loadResult(this, sc);
+            results.add(r);
+            if (r == null) {
+                labels.add(sc.client + "  未納品");
+            } else {
+                labels.add(sc.client + "  " + r.rank() + "  " + r.score + "/" + r.max);
+            }
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("これまでの成績")
+                .setItems(labels.toArray(new String[0]), new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        GameState.Result r = results.get(which);
+                        if (r == null) {
+                            show(all.get(which).client,
+                                    "まだ納品していません。\n\n"
+                                            + "「" + all.get(which).explicitRequirement + "」\n"
+                                            + "前提: " + all.get(which).boundary.label + "\n"
+                                            + "予算 " + all.get(which).budget + " 円");
+                            return;
+                        }
+                        show(r.client + "  評価 " + r.rank(),
+                                "案件適合度 " + r.score + " / " + r.max + "\n"
+                                        + "信頼 " + r.trust + "\n"
+                                        + "費用 " + r.cost + " 円 / 予算 " + r.budget + " 円\n"
+                                        + "稼働 " + r.days + " 日\n"
+                                        + "設計が原因の障害 " + r.faults + " 種");
+                    }
+                })
+                .setNegativeButton("閉じる", null)
+                .show();
+    }
+
     private void realDiagnosisMenu() {
         final String[] items = {
                 "設定を見る（通信しない）",
@@ -1668,6 +1798,7 @@ public class MainActivity extends AppCompatActivity {
                 .setPositiveButton("やり直す", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int which) {
                         state.reset(MainActivity.this, scenario);
+                        state.clearResult(MainActivity.this, scenario);
                         current = null;
                         for (Scenario.Hidden h : scenario.hidden) {
                             h.revealed = false;

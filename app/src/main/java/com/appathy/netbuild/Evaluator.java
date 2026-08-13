@@ -193,12 +193,17 @@ public class Evaluator {
                                 for (int prefix : prefixes) {
                                     for (boolean vpn : flags) {
                                         for (boolean onDemand : flags) {
-                                            Design candidate = evaluateCandidate(
-                                                    vlan, dmz, deny, dns, shared, px, prefix, vpn, onDemand);
-                                            int sc = evaluate(scenario, candidate, 0, extraBudget).fitness();
-                                            if (sc > bestScore) {
-                                                bestScore = sc;
-                                                best = candidate;
+                                            for (boolean ideal : flags) {
+                                                Design candidate = evaluateCandidate(
+                                                        vlan, dmz, deny, dns, shared, px, prefix, vpn, onDemand);
+                                                if (ideal) {
+                                                    candidate.customRules = candidate.idealRules(scenario);
+                                                }
+                                                int sc = evaluate(scenario, candidate, 0, extraBudget).fitness();
+                                                if (sc > bestScore) {
+                                                    bestScore = sc;
+                                                    best = candidate;
+                                                }
                                             }
                                         }
                                     }

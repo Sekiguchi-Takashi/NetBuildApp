@@ -19,6 +19,85 @@ public class GameState {
         return KEY + ":" + scenario.id;
     }
 
+    private static String resultKeyFor(String scenarioId) {
+        return "result:" + scenarioId;
+    }
+
+    /** 納品した案件の成績。案件をまたいで残る。 */
+    public static class Result {
+        public final String scenarioId;
+        public final String client;
+        public final int score;
+        public final int max;
+        public final int trust;
+        public final int cost;
+        public final int budget;
+        public final int days;
+        public final int faults;
+
+        public Result(String scenarioId, String client, int score, int max, int trust,
+                      int cost, int budget, int days, int faults) {
+            this.scenarioId = scenarioId;
+            this.client = client;
+            this.score = score;
+            this.max = max;
+            this.trust = trust;
+            this.cost = cost;
+            this.budget = budget;
+            this.days = days;
+            this.faults = faults;
+        }
+
+        /** 満点に対する割合で決める。信頼が低いと1段下がる。 */
+        public String rank() {
+            if (max <= 0) {
+                return "-";
+            }
+            int percent = score * 100 / max;
+            String[] ranks = {"S", "A", "B", "C"};
+            int index = percent >= 100 ? 0 : percent >= 80 ? 1 : percent >= 60 ? 2 : 3;
+            if (trust < 50 && index < 3) {
+                index++;
+            }
+            return ranks[index];
+        }
+    }
+
+    public void saveResult(Context context, Scenario scenario, Result result) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("client", result.client);
+            o.put("score", result.score);
+            o.put("max", result.max);
+            o.put("trust", result.trust);
+            o.put("cost", result.cost);
+            o.put("budget", result.budget);
+            o.put("days", result.days);
+            o.put("faults", result.faults);
+            prefs(context).edit().putString(resultKeyFor(scenario.id), o.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    public Result loadResult(Context context, Scenario scenario) {
+        String stored = prefs(context).getString(resultKeyFor(scenario.id), null);
+        if (stored == null) {
+            return null;
+        }
+        try {
+            JSONObject o = new JSONObject(stored);
+            return new Result(scenario.id, o.optString("client"), o.optInt("score"),
+                    o.optInt("max"), o.optInt("trust"), o.optInt("cost"),
+                    o.optInt("budget"), o.optInt("days"), o.optInt("faults"));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public void clearResult(Context context, Scenario scenario) {
+        prefs(context).edit().remove(resultKeyFor(scenario.id)).apply();
+    }
+
     public int day;
     public int trust = 50;
     public int extraCost;

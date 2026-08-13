@@ -219,8 +219,57 @@ public class Scenario {
         return s;
     }
 
+    /** 工場。外に公開するものが無く、余計な許可を消せるかが問われる。 */
+    public static Scenario factory() {
+        List<Hidden> hidden = new ArrayList<>(Arrays.asList(
+                new Hidden("外から見せるサイトや資料はありますか？",
+                        "ありません。うちは取引先とも電話とメールだけです。",
+                        "外部に公開するサーバーは不要。外から入る経路は塞ぐ",
+                        "会社案内のパンフレットに、ホームページのURLが載っていない"),
+                new Hidden("生産管理はどこで動かしていますか？",
+                        "クラウドのサービスです。現場のタブレットからも見ています。",
+                        "社内からクラウドへの接続が必要",
+                        "現場にタブレットが置かれていて、同じ画面が開いたままになっている"),
+                new Hidden("装置の保守は誰がやっていますか？",
+                        "メーカーさんです。何かあると遠隔で入って直してくれます。",
+                        "保守業者の接続は必要なときだけ開ける",
+                        "装置の脇に、メーカー名の入った通信機器が付いている"),
+                new Hidden("従業員は増えますか？",
+                        "第2ラインを立ち上げるので、120人まで増えます。",
+                        "将来120人分のアドレスが必要",
+                        "工場の奥に、まだ使っていない区画がある")
+        ));
+
+        Scenario s = new Scenario("factory", Boundary.ON_PREM,
+                "サンプル工業株式会社", "工場のネットワークを引き直したい",
+                1200000, 80, 120,
+                "現場の話は具体的だが、ITの話になると「お任せします」と言う",
+                hidden);
+
+        s.allowances.add(new Allowance("internal", "cloud", "pc", "cloud",
+                "生産管理クラウドへの接続", 1, true, 20, 25));
+        s.allowances.add(new Allowance("internal", "internet", "pc", "net",
+                "社員のインターネット利用", -1, false, 0, 0));
+        s.allowances.add(new Allowance("guest", "internet", "guest", "net",
+                "来客のインターネット利用", -1, false, 0, 0));
+
+        s.prohibitions.add(new Prohibition("net", "pc",
+                "インターネットから社内へ到達できます",
+                "外に見せるものが無いのに、外から入れる経路が開いています", 35, 25));
+        s.prohibitions.add(new Prohibition("net", "srv",
+                "インターネットから社内サーバーへ到達できます",
+                "生産の記録が外から触れる状態です", 25, 15));
+        s.prohibitions.add(new Prohibition("vendor", "pc",
+                "保守業者から社内へ常時到達できます",
+                "装置メーカーの回線が開きっぱなしです。必要なときだけ開けます", 20, 15));
+        s.prohibitions.add(new Prohibition("guest", "pc",
+                "来客端末から社内へ到達できます",
+                "現場に入る業者や見学者の端末が、社内と同じ場所にいます", 25, 15));
+        return s;
+    }
+
     public static List<Scenario> all() {
-        return new ArrayList<>(Arrays.asList(office(), distributed()));
+        return new ArrayList<>(Arrays.asList(office(), factory(), distributed()));
     }
 
     public int revealedCount() {

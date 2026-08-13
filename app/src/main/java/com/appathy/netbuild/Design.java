@@ -201,6 +201,18 @@ public class Design {
         return defaultRules();
     }
 
+    /**
+     * その案件で必要な通信だけを許可した、無駄のないルール。
+     * 手編集の到達目標であり、満点の計算にも使う。
+     */
+    public List<FirewallRule> idealRules(Scenario scenario) {
+        List<FirewallRule> rules = new ArrayList<>();
+        for (Scenario.Allowance a : scenario.allowances) {
+            rules.add(new FirewallRule(a.fromZone, a.toZone, "any", "any", true));
+        }
+        return rules;
+    }
+
     /** SASE案件のルール。事務所側は最小限で、判断の中心はアクセスの認可になる。 */
     private List<FirewallRule> saseRules() {
         List<FirewallRule> rules = new ArrayList<>();
