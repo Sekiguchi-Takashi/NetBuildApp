@@ -109,6 +109,26 @@ public class Evaluator {
             r.securityScore -= 5;
         }
 
+        if (design.redundantWan) {
+            r.findings.add(new Finding("良", "回線が2系統あります",
+                    "片方が切れても業務は止まりません"));
+            r.scalabilityScore += 10;
+        } else {
+            r.findings.add(new Finding("将来リスク", "回線が1系統しかありません",
+                    "切れた時点で、その拠点は外とやりとりできなくなります"));
+            r.scalabilityScore -= 10;
+        }
+
+        if (design.backup) {
+            r.findings.add(new Finding("良", "バックアップから戻せます",
+                    "暗号化されても、消されても、元に戻す手段があります"));
+            r.securityScore += 15;
+        } else {
+            r.findings.add(new Finding("危険", "バックアップがありません",
+                    "ランサムウェアで暗号化されると、戻す手段がありません"));
+            r.securityScore -= 20;
+        }
+
         if (design.dnsRedundant) {
             r.findings.add(new Finding("良", "DNSが冗長化されています",
                     "1台止まっても名前解決は続きます"));
@@ -170,6 +190,8 @@ public class Evaluator {
                             c.saseBypass = bypass;
                             c.ztna = zt;
                             c.dnsRedundant = dns;
+                            c.redundantWan = true;
+                            c.backup = true;
                             c.prefixLength = prefix;
                             int sc = evaluate(scenario, c, 0, extraBudget).fitness();
                             if (sc > bestScore) {
@@ -230,6 +252,8 @@ public class Evaluator {
         candidate.prefixLength = prefix;
         candidate.remoteVpn = vpn;
         candidate.vendorOnDemand = onDemand;
+        candidate.redundantWan = true;
+        candidate.backup = true;
         return candidate;
     }
 
@@ -251,6 +275,8 @@ public class Evaluator {
             s.saseBypass = false;
             s.ztna = true;
             s.dnsRedundant = true;
+            s.redundantWan = true;
+            s.backup = true;
             s.prefixLength = 24;
             return s.cost(scenario);
         }
@@ -266,6 +292,8 @@ public class Evaluator {
         d.proxy = true;
         d.remoteVpn = true;
         d.vendorOnDemand = true;
+        d.redundantWan = true;
+        d.backup = true;
         d.prefixLength = 24;
         return d.cost();
     }

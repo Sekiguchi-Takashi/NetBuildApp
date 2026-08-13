@@ -897,6 +897,8 @@ public class MainActivity extends AppCompatActivity {
         design.saseBypass = true;
         design.ztna = false;
         design.prefixLength = 26;
+        design.redundantWan = false;
+        design.backup = false;
         design.customRules = null;
     }
 
@@ -1083,6 +1085,7 @@ public class MainActivity extends AppCompatActivity {
                 "社内サーバーはどこに置くんですか？",
                 "プロキシは何のために入れるんですか？",
                 "ルールが多いと何が困るんですか？",
+                "バックアップって、そんなに大事ですか？",
                 "VPNって結局なんですか？",
                 "保守業者の接続はどう扱うんですか？",
                 "いまの設計はどこが危ないんですか？",
@@ -1150,7 +1153,7 @@ public class MainActivity extends AppCompatActivity {
                         + "そのルールは一度も評価されません。書いた本人は守れているつもりでいるので、"
                         + "抜けているルールより見つけにくいです。\n\n"
                         + "いまのルールは " + design.buildRules(scenario).size() + " 件です。";
-            case 8:
+            case 9:
                 return "公衆回線の上に、暗号化した通り道を作る仕組みです。\n\n"
                         + (design.remoteVpn
                         ? "いまは在宅の人がVPN経由で社内に入れます。"
@@ -1158,7 +1161,7 @@ public class MainActivity extends AppCompatActivity {
                         + "\n\n気をつけるのは、つないだ端末を「社内と同じ」扱いにしてしまうことです。"
                         + "家庭で感染した端末がそのまま社内に入ります。"
                         + "VPN装置そのものの脆弱性が侵入経路になった事例も多いです。";
-            case 9:
+            case 10:
                 return "相手は自社の管理が及ばない会社です。"
                         + "その会社が侵害されたら、こちらへの接続経路がそのまま入口になります。\n\n"
                         + (design.vendorOnDemand
@@ -1166,6 +1169,15 @@ public class MainActivity extends AppCompatActivity {
                         : "いまは常時つなぎっぱなしです。保守はたまにしか使わないのに、"
                         + "経路は24時間開いています。")
                         + "\n\nサプライチェーン攻撃と呼ばれる筋道で、実際に起きています。";
+            case 8:
+                return "壊されない努力には限界があるので、戻せる状態を作っておきます。\n\n"
+                        + (design.backup
+                        ? "いまはバックアップがあります。暗号化されても、消されても、戻せます。"
+                        : "いまはバックアップがありません。"
+                        + "ランサムウェアで暗号化されると、戻す手段が無いので、"
+                        + "業者に頼んでも戻る保証はありません。")
+                        + "\n\n同じ考え方で、回線も2系統にしておくと片方が切れても止まりません。"
+                        + "これらをまとめてBCP、事業継続の備えと呼びます。";
             case 3:
                 return "使えるアドレスの数が変わります。\n\n"
                         + "/26 は 62 台、/24 は 254 台。いまは /" + design.prefixLength
@@ -1680,17 +1692,34 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }, "dns");
         } else if ("net".equals(id)) {
-            new AlertDialog.Builder(this)
-                    .setTitle("インターネット")
-                    .setMessage("ISPからの回線。ここは設計で変えられません。\n\n"
-                            + "外部から内部への到達可否は、Firewallのルールと公開サーバーの置き場所で決まります。")
-                    .setNegativeButton("閉じる", null)
-                    .setNeutralButton("ルーターについて", new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int which) {
-                            showDeviceGuide("router");
+            toggleDialog("回線（BCP）",
+                    "ISPからの回線です。到達可否はFirewallのルールで決まりますが、"
+                            + "回線そのものが切れたときに止まるかどうかは本数で決まります。\n\n現在: "
+                            + (design.redundantWan ? "2系統（片方が切れても止まらない）" : "1系統"),
+                    design.redundantWan ? "1系統に戻す（-11万円）" : "2系統にする（+11万円）",
+                    new Runnable() {
+                        public void run() {
+                            changeDesign(new Runnable() {
+                                public void run() {
+                                    design.redundantWan = !design.redundantWan;
+                                }
+                            });
                         }
-                    })
-                    .show();
+                    }, "router");
+        } else if ("cloud".equals(id) && !campaignMode) {
+            toggleDialog("バックアップ（BCP）",
+                    "業務データを別の場所に保管し、戻せる状態にしておくかどうかです。\n\n現在: "
+                            + (design.backup ? "あり" : "なし"),
+                    design.backup ? "やめる（-9万円）" : "バックアップを取る（+9万円）",
+                    new Runnable() {
+                        public void run() {
+                            changeDesign(new Runnable() {
+                                public void run() {
+                                    design.backup = !design.backup;
+                                }
+                            });
+                        }
+                    }, "cloud_server");
         }
     }
 
@@ -1933,6 +1962,20 @@ public class MainActivity extends AppCompatActivity {
                             }
                         });
             }
+        } else if ("net".equals(id)) {
+            campaignToggle("回線（BCP）", d.redundantWan ? "2系統" : "1系統",
+                    d.redundantWan ? "1系統に戻す" : "2系統にする", new Runnable() {
+                        public void run() {
+                            d.redundantWan = !d.redundantWan;
+                        }
+                    });
+        } else if ("cloud".equals(id)) {
+            campaignToggle("バックアップ（BCP）", d.backup ? "あり" : "なし",
+                    d.backup ? "やめる" : "バックアップを取る", new Runnable() {
+                        public void run() {
+                            d.backup = !d.backup;
+                        }
+                    });
         } else if ("sase".equals(id)) {
             campaignToggle("SASEの検査", d.saseBypass ? "例外あり" : "全通信を検査",
                     d.saseBypass ? "例外をなくす" : "例外を戻す", new Runnable() {

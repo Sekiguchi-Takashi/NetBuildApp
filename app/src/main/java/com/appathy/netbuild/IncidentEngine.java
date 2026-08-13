@@ -34,6 +34,13 @@ public class IncidentEngine {
             list.add(Incident.Cause.SERVER_EXPOSED);
         }
         list.add(Incident.Cause.MALWARE_C2);
+        if (!design.backup || !design.proxy) {
+            list.add(Incident.Cause.RANSOMWARE);
+        }
+        if (design.redundantWan) {
+            list.remove(Incident.Cause.WAN_DOWN);
+            list.remove(Incident.Cause.LINK_DOWN);
+        }
         return list;
     }
 
@@ -69,6 +76,7 @@ public class IncidentEngine {
                 || c == Incident.Cause.GUEST_INTRUSION
                 || c == Incident.Cause.WEB_COMPROMISE
                 || c == Incident.Cause.SERVER_EXPOSED
-                || (c == Incident.Cause.MALWARE_C2 && design != null && !design.proxy);
+                || (c == Incident.Cause.MALWARE_C2 && design != null && !design.proxy)
+                || (c == Incident.Cause.RANSOMWARE && design != null && !design.backup);
     }
 }

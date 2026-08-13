@@ -23,6 +23,11 @@ public class Design {
     /** SASE案件のみ：事務所に残るシステムへのアクセスもSASE経由の認証つきにするか。 */
     public boolean ztna = false;
 
+    /** BCP: 回線を2系統にするか。片方が切れても止まらない。 */
+    public boolean redundantWan = false;
+    /** BCP: バックアップを取り、戻せる状態にしてあるか。 */
+    public boolean backup = false;
+
     /** 手で並べたルール。null なら自動生成のルールを使う。 */
     public List<FirewallRule> customRules = null;
     public int prefixLength = 26;
@@ -39,6 +44,8 @@ public class Design {
     public static final int COST_SASE_BASE = 380000;
     public static final int COST_SASE_NO_BYPASS = 50000;
     public static final int COST_ZTNA = 120000;
+    public static final int COST_REDUNDANT_WAN = 110000;
+    public static final int COST_BACKUP = 90000;
 
     public int cost() {
         return cost(null);
@@ -59,7 +66,7 @@ public class Design {
             if (prefixLength <= 24) {
                 total += COST_LARGE_SUBNET;
             }
-            return total;
+            return total + bcpCost();
         }
         int total = COST_BASE;
         if (guestVlan) {
@@ -85,6 +92,17 @@ public class Design {
         }
         if (vendorOnDemand) {
             total += COST_VENDOR_PROCESS;
+        }
+        return total + bcpCost();
+    }
+
+    private int bcpCost() {
+        int total = 0;
+        if (redundantWan) {
+            total += COST_REDUNDANT_WAN;
+        }
+        if (backup) {
+            total += COST_BACKUP;
         }
         return total;
     }
@@ -258,7 +276,9 @@ public class Design {
             return "検査の例外: " + (saseBypass ? "あり（迂回できる）" : "なし（全通信を検査）")
                     + " / 事務所システムへの接続: " + (ztna ? "SASE経由の認証つき" : "手段なし")
                     + " / DNS: " + (dnsRedundant ? "2台" : "1台")
-                    + " / 事務所サブネット: /" + prefixLength;
+                    + " / 事務所サブネット: /" + prefixLength
+                    + " / 回線: " + (redundantWan ? "2系統" : "1系統")
+                    + " / バックアップ: " + (backup ? "あり" : "なし");
         }
         return summary();
     }
@@ -273,6 +293,8 @@ public class Design {
                 + " / プロキシ: " + (proxy ? "あり" : "なし")
                 + " / リモートVPN: " + (remoteVpn ? "あり" : "なし")
                 + " / 保守接続: " + (vendorOnDemand ? "必要時のみ" : "常時")
+                + " / 回線: " + (redundantWan ? "2系統" : "1系統")
+                + " / バックアップ: " + (backup ? "あり" : "なし")
                 + " / FWルール: " + (customRules == null ? "自動" : "手編集" + customRules.size() + "件");
     }
 }

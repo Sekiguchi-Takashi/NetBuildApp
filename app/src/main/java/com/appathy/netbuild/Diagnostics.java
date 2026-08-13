@@ -16,7 +16,8 @@ public class Diagnostics {
         INTERNAL_LOG("社内サーバーのアクセスログを確認"),
         PUBLIC_LOG("公開サーバーの改ざん検知ログを確認"),
         EXTERNAL_REACH("外部から社内サーバーに届くか確認"),
-        PROXY_LOG("プロキシの通信ログを確認");
+        PROXY_LOG("プロキシの通信ログを確認"),
+        FILE_CHECK("共有フォルダのファイルを開いて確認");
 
         public final String label;
 
@@ -44,7 +45,10 @@ public class Diagnostics {
             case EXTERNAL_REACH:
                 return cause != Incident.Cause.SERVER_EXPOSED;
             case PROXY_LOG:
-                return cause != Incident.Cause.MALWARE_C2;
+                return cause != Incident.Cause.MALWARE_C2
+                        && cause != Incident.Cause.RANSOMWARE;
+            case FILE_CHECK:
+                return cause != Incident.Cause.RANSOMWARE;
             case PUBLIC_LOG:
                 return cause != Incident.Cause.WEB_COMPROMISE;
             default:
@@ -70,6 +74,8 @@ public class Diagnostics {
                 return normal ? "外部からは応答しない" : "外部から共有フォルダに接続できてしまう";
             case PROXY_LOG:
                 return normal ? "不審な宛先への通信なし" : "1台の端末から、見覚えのない宛先へ短い間隔で接続";
+            case FILE_CHECK:
+                return normal ? "問題なく開ける" : "拡張子が変わっていて開けない。脅迫文が置かれている";
             default:
                 return normal ? "正常" : "異常";
         }

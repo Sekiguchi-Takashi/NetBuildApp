@@ -61,6 +61,7 @@ public class Campaign {
     private final Random random = new Random();
     private final IncidentEngine incidents = new IncidentEngine();
     private final Evaluator evaluator = new Evaluator();
+    private final java.util.Map<String, Design> bestCache = new java.util.HashMap<>();
 
     public int month;
     public long cash = 3000000;
@@ -214,7 +215,11 @@ public class Campaign {
      * 最良の設計と比べて、足りていない項目を1つ返す。
      */
     public Weakness weaknessOf(Site site) {
-        Design best = evaluator.bestDesign(site.scenario, 0);
+        Design best = bestCache.get(site.scenario.id);
+        if (best == null) {
+            best = evaluator.bestDesign(site.scenario, 0);
+            bestCache.put(site.scenario.id, best);
+        }
         Design d = site.design;
         if (site.scenario.boundary == Scenario.Boundary.SASE) {
             if (d.saseBypass != best.saseBypass) {
@@ -263,6 +268,24 @@ public class Campaign {
                             }
                         }, 60000);
             }
+        }
+        if (!d.backup) {
+            return new Weakness("バックアップがありません",
+                    "暗号化されたり消されたりしたとき、戻す手段がありません。",
+                    new Proposal.Change() {
+                        public void apply(Design x) {
+                            x.backup = true;
+                        }
+                    }, 110000);
+        }
+        if (!d.redundantWan) {
+            return new Weakness("回線が1系統しかありません",
+                    "切れた時点で、その拠点は外とやりとりできなくなります。",
+                    new Proposal.Change() {
+                        public void apply(Design x) {
+                            x.redundantWan = true;
+                        }
+                    }, 140000);
         }
         if (!d.dnsRedundant && best.dnsRedundant) {
             return new Weakness("DNSが1台しかありません",
@@ -381,6 +404,8 @@ public class Campaign {
                 o.put("saseBypass", s.design.saseBypass);
                 o.put("ztna", s.design.ztna);
                 o.put("prefixLength", s.design.prefixLength);
+                o.put("redundantWan", s.design.redundantWan);
+                o.put("backup", s.design.backup);
                 arr.put(o);
             }
             root.put("sites", arr);
@@ -427,6 +452,8 @@ public class Campaign {
                     s.design.saseBypass = o.optBoolean("saseBypass", true);
                     s.design.ztna = o.optBoolean("ztna");
                     s.design.prefixLength = o.optInt("prefixLength", 26);
+                    s.design.redundantWan = o.optBoolean("redundantWan");
+                    s.design.backup = o.optBoolean("backup");
                 }
             }
             return true;

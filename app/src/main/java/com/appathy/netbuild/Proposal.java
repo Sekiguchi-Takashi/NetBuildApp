@@ -49,6 +49,27 @@ public class Proposal {
         Proposal p = new Proposal(site.name + "で障害",
                 "「" + cause.symptom + "」");
 
+        if (cause == Incident.Cause.RANSOMWARE) {
+            if (site.design.backup) {
+                p.add(new Option("バックアップから戻す",
+                        "取っておいたバックアップから復旧します。数日で元に戻ります。",
+                        180000, -4, null));
+            } else {
+                p.add(new Option("復旧業者に依頼する",
+                        "バックアップが無いので、戻せる保証はありません。費用も期間もかさみます。",
+                        900000, -25, null));
+            }
+            p.add(new Option("バックアップを整備し、外向き通信も監視する",
+                    "戻す手段と、気づく手段の両方を作ります。次からは被害が小さく済みます。",
+                    site.design.backup ? 300000 : 700000, 6, new Change() {
+                public void apply(Design d) {
+                    d.backup = true;
+                    d.proxy = true;
+                }
+            }));
+            return p;
+        }
+
         p.add(new Option("応急処置で止める",
                 "その場は収まりますが、原因は残ります。同じ障害がまた起きます。",
                 150000, -6, null));
@@ -105,6 +126,8 @@ public class Proposal {
                 design.dnsRedundant = true;
                 design.prefixLength = 24;
                 design.proxy = true;
+                design.redundantWan = true;
+                design.backup = true;
             }
         }));
 
@@ -116,6 +139,13 @@ public class Proposal {
 
     private static Change fixFor(Incident.Cause cause) {
         switch (cause) {
+            case LINK_DOWN:
+            case WAN_DOWN:
+                return new Change() {
+                    public void apply(Design d) {
+                        d.redundantWan = true;
+                    }
+                };
             case DNS_DOWN:
                 return new Change() {
                     public void apply(Design d) {
