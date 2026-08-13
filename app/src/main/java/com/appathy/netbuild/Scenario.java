@@ -268,8 +268,48 @@ public class Scenario {
         return s;
     }
 
+    /** 屋外の現場事務所。仮設で、回線も設備も限られる。 */
+    public static Scenario outdoor() {
+        List<Hidden> hidden = new ArrayList<>(Arrays.asList(
+                new Hidden("現場には何人くらい入りますか？",
+                        "20人前後です。工期によって増減します。",
+                        "小規模だが、出入りが多い",
+                        "プレハブの前に、ヘルメットが日によって違う数だけ並んでいる"),
+                new Hidden("図面はどこで見ていますか？",
+                        "タブレットでクラウドから落としています。現場でも見ます。",
+                        "屋外からクラウドへの接続が必要",
+                        "作業員がタブレットを持って歩いている"),
+                new Hidden("この事務所はいつまで使いますか？",
+                        "工期のあいだだけです。終わったら畳みます。",
+                        "長く使わない前提。大きな設備投資は見合わない",
+                        "建物がプレハブで、配線が仮設のまま這わせてある")
+        ));
+
+        Scenario s = new Scenario("outdoor", Boundary.ON_PREM,
+                "現場事務所（仮設）", "工事の間だけネットを使えるようにしたい",
+                500000, 20, 25,
+                "急いでいる。細かい話より、いつ使えるようになるかを気にする",
+                hidden);
+        s.zones = new String[]{"guest", "internal", "cloud", "internet"};
+
+        s.allowances.add(new Allowance("internal", "cloud", "pc", "cloud",
+                "現場から図面クラウドへの接続", 1, true, 20, 25));
+        s.allowances.add(new Allowance("internal", "internet", "pc", "net",
+                "作業員のインターネット利用", -1, false, 0, 0));
+        s.allowances.add(new Allowance("guest", "internet", "guest", "net",
+                "協力会社のインターネット利用", -1, false, 0, 0));
+
+        s.prohibitions.add(new Prohibition("net", "pc",
+                "インターネットから現場の端末へ到達できます",
+                "仮設でも、外から入れる経路は塞ぎます", 30, 20));
+        s.prohibitions.add(new Prohibition("guest", "pc",
+                "協力会社の端末から自社端末へ到達できます",
+                "出入りの多い現場ほど、分けておく意味があります", 20, 15));
+        return s;
+    }
+
     public static List<Scenario> all() {
-        return new ArrayList<>(Arrays.asList(office(), factory(), distributed()));
+        return new ArrayList<>(Arrays.asList(office(), factory(), outdoor(), distributed()));
     }
 
     public int revealedCount() {

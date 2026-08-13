@@ -59,6 +59,23 @@
             android:textColor="#E5484D" />
     </LinearLayout>
 
+    <HorizontalScrollView
+        android:id="@+id/site_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="40dp"
+        android:background="#0A0E13"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/site_tabs"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="4dp" />
+    </HorizontalScrollView>
+
     <TextView
         android:id="@+id/tv_hint"
         android:layout_width="match_parent"

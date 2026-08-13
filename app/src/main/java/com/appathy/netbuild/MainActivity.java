@@ -9,7 +9,11 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.core.app.ActivityCompat;
@@ -41,6 +45,10 @@ public class MainActivity extends AppCompatActivity {
     private final GameState state = new GameState();
     private final RealDiagnosis realDiagnosis = new RealDiagnosis();
     private final RealQuiz realQuiz = new RealQuiz();
+    private final Campaign campaign = new Campaign();
+    private boolean campaignMode;
+    private Site activeSite;
+    private boolean calendarRunning;
     private List<RealQuiz.Question> quiz;
     private int quizIndex;
     private int quizCorrect;
@@ -60,6 +68,8 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvIncident;
     private TextView tvBubble;
     private TextView tvHint;
+    private HorizontalScrollView siteBar;
+    private LinearLayout siteTabs;
 
     private Incident current;
     private AlertDialog progressDialog;
@@ -95,6 +105,8 @@ public class MainActivity extends AppCompatActivity {
         tvIncident = findViewById(R.id.tv_incident);
         tvBubble = findViewById(R.id.tv_bubble);
         tvHint = findViewById(R.id.tv_hint);
+        siteBar = findViewById(R.id.site_bar);
+        siteTabs = findViewById(R.id.site_tabs);
 
         current = state.load(this, design, scenario);
 
@@ -186,7 +198,42 @@ public class MainActivity extends AppCompatActivity {
                 showBrief();
             }
         });
-        if (state.day > 0) {
+        if (campaignMode) {
+            actions.add(calendarRunning ? "カレンダーを止める" : "カレンダーを進める");
+            handlers.add(new Runnable() {
+                public void run() {
+                    toggleCalendar();
+                }
+            });
+            if (activeSite != null && !activeSite.running()) {
+                actions.add(activeSite.name + "を稼働させる");
+                handlers.add(new Runnable() {
+                    public void run() {
+                        startSite();
+                    }
+                });
+            }
+            actions.add("経営の状況を見る");
+            handlers.add(new Runnable() {
+                public void run() {
+                    campaignStatus();
+                }
+            });
+            actions.add("設計モードに戻る");
+            handlers.add(new Runnable() {
+                public void run() {
+                    leaveCampaign();
+                }
+            });
+        } else {
+            actions.add("10年の経営を始める");
+            handlers.add(new Runnable() {
+                public void run() {
+                    enterCampaign();
+                }
+            });
+        }
+        if (!campaignMode && state.day > 0) {
             actions.add("この案件を納品する");
             handlers.add(new Runnable() {
                 public void run() {
@@ -262,6 +309,299 @@ public class MainActivity extends AppCompatActivity {
      * 案件を締める。納品するとその時点の成績が残る。
      * 未解決の障害を抱えたままでは締められない。
      */
+    // ------------------------------------------------------------------
+    // 10年経営モード
+    // ------------------------------------------------------------------
+
+    private void enterCampaign() {
+        if (campaign.load(this)) {
+            resumeCampaign(true);
+            return;
+        }
+        final Campaign.Difficulty[] levels = Campaign.Difficulty.values();
+        String[] labels = new String[levels.length];
+        for (int i = 0; i < levels.length; i++) {
+            labels[i] = levels[i].label + "  拠点" + levels[i].siteCount + "か所";
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("受け持つ範囲を選びます")
+                .setMessage("拠点が増えるほど収入は増えますが、"
+                        + "同時に見なければならない設備も増えます。")
+                .setItems(labels, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        campaign.setDifficulty(levels[which]);
+                        campaign.save(MainActivity.this);
+                        resumeCampaign(false);
+                    }
+                })
+                .show();
+    }
+
+    private void resumeCampaign(boolean resumed) {
+        campaignMode = true;
+        activeSite = campaign.activeSites().get(0);
+        buildSiteTabs();
+        refresh();
+        show(resumed ? "経営を再開します" : "10年の経営を始めます",
+                (resumed
+                        ? campaign.year() + "年目 " + campaign.monthOfYear() + "月から再開します。\n\n"
+                        : campaign.difficulty.label + "。拠点は "
+                        + campaign.difficulty.siteCount + " か所です。\n\n"
+                        + "拠点ごとに図を触って設計し、「稼働させる」で動かします。"
+                        + "稼働したらカレンダーが進み、障害が起きたところで止まります。\n\n"
+                        + "初期構築だけは自分で組みます。"
+                        + "稼働後の判断は、その都度2〜3の案から選ぶ形になります。\n\n")
+                        + "資金 " + campaign.cash + " 円 / 満足度 " + campaign.satisfaction + "\n\n"
+                        + "クラウド前提の拠点は3年、自前の拠点は5年で更新時期が来ます。"
+                        + "10年後に、儲けと満足度の順位が出ます。");
+    }
+
+    private void leaveCampaign() {
+        stopCalendar();
+        campaign.save(this);
+        campaignMode = false;
+        activeSite = null;
+        siteBar.setVisibility(View.GONE);
+        refresh();
+        show("設計モード", "経営の進行は保存しました。「10年の経営を始める」で続きから再開できます。");
+    }
+
+    /** 拠点のタブ。触ると図がその拠点に切り替わる。 */
+    private void buildSiteTabs() {
+        siteTabs.removeAllViews();
+        for (final Site site : campaign.activeSites()) {
+            Button b = new Button(this);
+            b.setTextSize(11);
+            b.setAllCaps(false);
+            b.setText(site.name + (site.running() ? "" : "（未稼働）"));
+            b.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    activeSite = site;
+                    refresh();
+                    say("「" + site.scenario.explicitRequirement + "」");
+                }
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.setMarginEnd(6);
+            siteTabs.addView(b, lp);
+        }
+        siteBar.setVisibility(View.VISIBLE);
+    }
+
+    private void startSite() {
+        final Site site = activeSite;
+        int cost = site.design.cost(site.scenario);
+        new AlertDialog.Builder(this)
+                .setTitle(site.name + "を稼働させます")
+                .setMessage(site.design.summary(site.scenario) + "\n\n"
+                        + "初期構築 " + cost + " 円\n"
+                        + "資金 " + campaign.cash + " 円\n"
+                        + "月額の保守収入 " + site.monthlyRevenue + " 円\n\n"
+                        + "いまの設計だと、障害の起きやすさは「"
+                        + campaign.riskLabel(site) + "」です。\n\n"
+                        + "稼働後の設計変更は提案の形になります。ここが最後の作り込みです。")
+                .setNegativeButton("まだ直す", null)
+                .setPositiveButton("稼働させる", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface d, int w) {
+                        if (site.design.cost(site.scenario) > campaign.cash) {
+                            show("資金が足りません",
+                                    "初期構築 " + site.design.cost(site.scenario) + " 円に対して、"
+                                            + "資金は " + campaign.cash + " 円です。\n\n"
+                                            + "構成を削るか、先に別の拠点を稼働させて収入を作ってください。");
+                            return;
+                        }
+                        campaign.start(site);
+                        campaign.save(MainActivity.this);
+                        buildSiteTabs();
+                        refresh();
+                        say("「よろしくお願いします」");
+                    }
+                })
+                .show();
+    }
+
+    private void toggleCalendar() {
+        if (calendarRunning) {
+            stopCalendar();
+            show("停止", campaign.year() + "年目 " + campaign.monthOfYear() + "月で止めました。");
+        } else {
+            if (!campaign.anyRunning()) {
+                show("まだ動かせません", "稼働している拠点がありません。"
+                        + "拠点を選んで設計し、「稼働させる」を選んでください。");
+                return;
+            }
+            calendarRunning = true;
+            refresh();
+            main.postDelayed(calendarTick, 400);
+        }
+    }
+
+    private void stopCalendar() {
+        calendarRunning = false;
+        main.removeCallbacks(calendarTick);
+        refresh();
+    }
+
+    private final Runnable calendarTick = new Runnable() {
+        public void run() {
+            if (!calendarRunning || !alive()) {
+                return;
+            }
+            Campaign.Event e = campaign.advanceMonth();
+            refresh();
+            campaign.save(MainActivity.this);
+            switch (e.reason) {
+                case INCIDENT:
+                    stopCalendar();
+                    activeSite = e.site;
+                    buildSiteTabs();
+                    refresh();
+                    say("「" + e.cause.symptom + "」");
+                    showProposal(Proposal.forIncident(e.site, e.cause), e.site);
+                    return;
+                case REPLACEMENT:
+                    stopCalendar();
+                    activeSite = e.site;
+                    refresh();
+                    showProposal(Proposal.forReplacement(e.site), e.site);
+                    return;
+                case PROPOSAL:
+                    Campaign.Weakness w = campaign.weaknessOf(e.site);
+                    if (w == null) {
+                        main.postDelayed(this, 400);
+                        return;
+                    }
+                    stopCalendar();
+                    activeSite = e.site;
+                    buildSiteTabs();
+                    refresh();
+                    say("「そのあたり、詳しくないもので……」");
+                    showProposal(Proposal.forWeakness(e.site, w.title, w.reason,
+                            w.cost, w.change), e.site);
+                    return;
+                case FINISHED:
+                    stopCalendar();
+                    showFinalStandings();
+                    return;
+                default:
+                    main.postDelayed(this, 400);
+            }
+        }
+    };
+
+    /** 提案を出して選んでもらう。稼働後の判断はすべてこの形。 */
+    private void showProposal(final Proposal proposal, final Site site) {
+        String[] labels = new String[proposal.options.size()];
+        for (int i = 0; i < proposal.options.size(); i++) {
+            Proposal.Option o = proposal.options.get(i);
+            labels[i] = o.label + (o.cost > 0 ? "  " + (o.cost / 10000) + "万円" : "  費用なし");
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(proposal.title)
+                .setMessage(proposal.situation + "\n\nどうしますか。")
+                .setItems(labels, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface d, int which) {
+                        Proposal.Option o = proposal.options.get(which);
+                        campaign.pay(o.cost, o.satisfaction);
+                        if (o.change != null) {
+                            o.change.apply(site.design);
+                        }
+                        if (proposal.title.contains("更新")) {
+                            site.startedMonth = campaign.month;
+                        }
+                        campaign.save(MainActivity.this);
+                        refresh();
+                        show(o.label, o.detail + "\n\n"
+                                + (o.cost > 0 ? "費用 " + o.cost + " 円\n" : "")
+                                + "満足度 " + campaign.satisfaction
+                                + "（" + (o.satisfaction >= 0 ? "+" : "") + o.satisfaction + "）\n"
+                                + "資金 " + campaign.cash + " 円\n\n"
+                                + site.name + "の障害の起きやすさ: " + campaign.riskLabel(site));
+                    }
+                })
+                .setCancelable(false)
+                .show();
+    }
+
+    private void campaignStatus() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(campaign.year()).append("年目 ").append(campaign.monthOfYear()).append("月")
+                .append("（10年のうち）\n\n");
+        sb.append("資金 ").append(campaign.cash).append(" 円\n");
+        sb.append("累計の売上 ").append(campaign.totalRevenue).append(" 円\n");
+        sb.append("累計の支出 ").append(campaign.totalCost).append(" 円\n");
+        sb.append("利益 ").append(campaign.profit()).append(" 円\n");
+        sb.append("満足度 ").append(campaign.satisfaction).append("\n\n");
+        for (Site s : campaign.activeSites()) {
+            sb.append("[ ").append(s.name).append(" ]\n");
+            if (!s.running()) {
+                sb.append("未稼働\n\n");
+                continue;
+            }
+            sb.append("障害の起きやすさ ").append(campaign.riskLabel(s))
+                    .append("（月 ").append(campaign.incidentChance(s)).append("%）\n");
+            sb.append("これまでの障害 ").append(s.incidentCount).append(" 回\n");
+            int left = s.monthsToReplacement(campaign.month);
+            sb.append("更新まで ").append(Math.max(0, left)).append(" か月")
+                    .append(s.scenario.boundary == Scenario.Boundary.SASE ? "（クラウド3年）" : "（自前5年）")
+                    .append("\n\n");
+        }
+        show("経営の状況", sb.toString());
+    }
+
+    private void showFinalStandings() {
+        List<Campaign.Standing> list = campaign.standings();
+        StringBuilder sb = new StringBuilder("10年が終わりました。\n\n");
+
+        List<Campaign.Standing> byProfit = new ArrayList<>(list);
+        java.util.Collections.sort(byProfit, new java.util.Comparator<Campaign.Standing>() {
+            public int compare(Campaign.Standing a, Campaign.Standing b) {
+                return Long.compare(b.profit, a.profit);
+            }
+        });
+        sb.append("[ 儲けランキング ]\n");
+        for (int i = 0; i < byProfit.size(); i++) {
+            sb.append(i + 1).append("位 ").append(byProfit.get(i).name)
+                    .append("  ").append(byProfit.get(i).profit).append(" 円\n");
+        }
+
+        List<Campaign.Standing> bySat = new ArrayList<>(list);
+        java.util.Collections.sort(bySat, new java.util.Comparator<Campaign.Standing>() {
+            public int compare(Campaign.Standing a, Campaign.Standing b) {
+                return Integer.compare(b.satisfaction, a.satisfaction);
+            }
+        });
+        sb.append("\n[ 満足度ランキング ]\n");
+        for (int i = 0; i < bySat.size(); i++) {
+            sb.append(i + 1).append("位 ").append(bySat.get(i).name)
+                    .append("  ").append(bySat.get(i).satisfaction).append("\n");
+        }
+
+        int profitRank = byProfit.indexOf(list.get(0)) + 1;
+        int satRank = bySat.indexOf(list.get(0)) + 1;
+        sb.append("\n").append(verdict(profitRank, satRank));
+        show("10年の結果", sb.toString());
+    }
+
+    private String verdict(int profitRank, int satRank) {
+        if (profitRank == 1 && satRank == 1) {
+            return "儲けも満足度も1位です。安く済ませたのではなく、"
+                    + "障害を起こさない設計にしたぶんが利益になっています。";
+        }
+        if (satRank == 1) {
+            return "満足度は1位ですが、儲けでは負けました。"
+                    + "手厚くやりすぎた部分がないか、更新の判断を見直してみてください。";
+        }
+        if (profitRank == 1) {
+            return "儲けは1位ですが、顧客の満足度が低いままです。"
+                    + "障害対応の先送りが積み重なると、次の10年で契約を失います。";
+        }
+        return "どちらも1位を取れませんでした。"
+                + "設計の弱点をそのままにすると障害対応の費用がかさみ、満足度も削れます。"
+                + "稼働前にどこまで潰せるかが効きます。";
+    }
+
     private void confirmDeliver() {
         if (current != null && !current.resolved) {
             show("納品できません",
@@ -1152,6 +1492,17 @@ public class MainActivity extends AppCompatActivity {
     // ------------------------------------------------------------------
 
     private void nodeMenu(String id) {
+        if (campaignMode && activeSite != null) {
+            if (activeSite.running()) {
+                show("稼働中です",
+                        "稼働後の変更は、その都度の提案で決めます。"
+                                + "障害が起きたときや更新時期に、2〜3の案から選んでください。\n\n"
+                                + "いまの構成: " + activeSite.design.summary(activeSite.scenario));
+                return;
+            }
+            campaignNodeMenu(id);
+            return;
+        }
         if ("sw".equals(id) || "guest".equals(id)) {
             toggleDialog("スイッチ / 来客セグメント",
                     "来客をVLANで分離するかどうか。分離しない場合、来客端末は社員PCと同じL2に載ります。\n\n現在: "
@@ -1512,6 +1863,107 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
+    /** 稼働前の拠点は、設計モードと同じように図から組める。 */
+    private void campaignNodeMenu(String id) {
+        final Design d = activeSite.design;
+        final Scenario sc = activeSite.scenario;
+        if ("sw".equals(id) || "guest".equals(id)) {
+            campaignToggle("来客・作業者の分離", d.guestVlan ? "分離あり" : "分離なし",
+                    d.guestVlan ? "分離をやめる" : "VLANで分離する", new Runnable() {
+                        public void run() {
+                            d.guestVlan = !d.guestVlan;
+                        }
+                    });
+        } else if ("web".equals(id)) {
+            campaignToggle("公開サーバーの置き場所", d.dmz ? "DMZ" : "内部セグメント",
+                    d.dmz ? "内部に戻す" : "DMZに移す", new Runnable() {
+                        public void run() {
+                            d.dmz = !d.dmz;
+                        }
+                    });
+        } else if ("srv".equals(id)) {
+            campaignToggle("社内サーバー",
+                    d.serverSharedWithWeb ? "公開サーバーと同区画" : "内部に分離",
+                    d.serverSharedWithWeb ? "内部に分離する" : "同居に戻す", new Runnable() {
+                        public void run() {
+                            d.serverSharedWithWeb = !d.serverSharedWithWeb;
+                        }
+                    });
+        } else if (id.startsWith("dns")) {
+            campaignToggle("DNS", d.dnsRedundant ? "2台" : "1台",
+                    d.dnsRedundant ? "1台に戻す" : "2台にする", new Runnable() {
+                        public void run() {
+                            d.dnsRedundant = !d.dnsRedundant;
+                        }
+                    });
+        } else if ("pc".equals(id)) {
+            campaignToggle("サブネット", "/" + d.prefixLength + "（" + d.usableHosts() + "台）",
+                    d.prefixLength <= 24 ? "/26 に狭める" : "/24 に広げる", new Runnable() {
+                        public void run() {
+                            d.prefixLength = d.prefixLength <= 24 ? 26 : 24;
+                        }
+                    });
+        } else if ("fw".equals(id)) {
+            campaignToggle("プロキシ", d.proxy ? "あり" : "なし",
+                    d.proxy ? "撤去する" : "導入する", new Runnable() {
+                        public void run() {
+                            d.proxy = !d.proxy;
+                        }
+                    });
+        } else if ("vendor".equals(id)) {
+            campaignToggle("保守業者の接続", d.vendorOnDemand ? "必要時のみ" : "常時",
+                    d.vendorOnDemand ? "常時に戻す" : "必要時のみにする", new Runnable() {
+                        public void run() {
+                            d.vendorOnDemand = !d.vendorOnDemand;
+                        }
+                    });
+        } else if ("home".equals(id)) {
+            if (sc.boundary == Scenario.Boundary.SASE) {
+                campaignToggle("事務所システムへの接続", d.ztna ? "認証つき" : "手段なし",
+                        d.ztna ? "やめる" : "設定する", new Runnable() {
+                            public void run() {
+                                d.ztna = !d.ztna;
+                            }
+                        });
+            } else {
+                campaignToggle("リモートVPN", d.remoteVpn ? "あり" : "なし",
+                        d.remoteVpn ? "撤去する" : "用意する", new Runnable() {
+                            public void run() {
+                                d.remoteVpn = !d.remoteVpn;
+                            }
+                        });
+            }
+        } else if ("sase".equals(id)) {
+            campaignToggle("SASEの検査", d.saseBypass ? "例外あり" : "全通信を検査",
+                    d.saseBypass ? "例外をなくす" : "例外を戻す", new Runnable() {
+                        public void run() {
+                            d.saseBypass = !d.saseBypass;
+                        }
+                    });
+        } else {
+            show("この機器", "ここは設計で変えられません。");
+        }
+    }
+
+    private void campaignToggle(String title, String now, String action, final Runnable change) {
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage("現在: " + now + "\n\n初期構築の費用に反映されます。")
+                .setNegativeButton("閉じる", null)
+                .setPositiveButton(action, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        change.run();
+                        campaign.save(MainActivity.this);
+                        refresh();
+                        show("変更しました",
+                                activeSite.design.summary(activeSite.scenario) + "\n\n"
+                                        + "初期構築 " + activeSite.design.cost(activeSite.scenario) + " 円\n"
+                                        + "障害の起きやすさ " + campaign.riskLabel(activeSite));
+                    }
+                })
+                .show();
+    }
+
     private void linkMenu(String a, String b, String kind) {
         String title;
         String body;
@@ -1682,6 +2134,11 @@ public class MainActivity extends AppCompatActivity {
     // ------------------------------------------------------------------
 
     private void refresh() {
+        if (campaignMode && activeSite != null) {
+            refreshCampaign();
+            return;
+        }
+        siteBar.setVisibility(View.GONE);
         Incident.Cause active = current != null && !current.resolved ? current.cause : null;
         topology.update(design, active, scenario);
         tvDay.setText("Day " + state.day + (state.easyMode ? " 簡単" : ""));
@@ -1712,6 +2169,43 @@ public class MainActivity extends AppCompatActivity {
         } else {
             tvHint.setText("図の機器や配線を押すと設計を変えられます");
         }
+    }
+
+    /** 経営モードの表示。図は選んでいる拠点のもの、帯は会社の数字。 */
+    private void refreshCampaign() {
+        topology.update(activeSite.design, null, activeSite.scenario);
+        tvDay.setText(campaign.year() + "年" + campaign.monthOfYear() + "月");
+        tvTrust.setText("満足 " + campaign.satisfaction);
+        tvCost.setText("資金 " + (campaign.cash / 10000) + "万");
+        tvIncident.setText(activeSite.running()
+                ? "危険度" + campaign.riskLabel(activeSite) : "未稼働");
+
+        charaStaff.setImageResource(campaign.satisfaction < 40
+                ? R.drawable.chara_angry
+                : campaign.satisfaction < 60 ? R.drawable.chara_worry : R.drawable.chara_normal);
+        tvAllyName.setText("自社の社員");
+        tvAllyRole.setText(calendarRunning ? "稼働中" : "待機中");
+
+        speaker = Stakeholder.CLIENT;
+        charaPartner.setImageResource(speaker.face(false, campaign.satisfaction));
+        tvPartnerName.setText(activeSite.name);
+        tvPartnerRole.setText(activeSite.scenario.client);
+
+        if (!activeSite.running()) {
+            tvHint.setText("図を触って設計し、社員から「" + activeSite.name + "を稼働させる」を選びます");
+        } else {
+            tvHint.setText(calendarBar() + (calendarRunning ? "  進行中" : "  停止中"));
+        }
+    }
+
+    /** 10年のどのあたりかを1行で示す。 */
+    private String calendarBar() {
+        int filled = campaign.month * 20 / Campaign.TOTAL_MONTHS;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 20; i++) {
+            sb.append(i < filled ? '#' : '.');
+        }
+        return sb + " " + campaign.year() + "/10年";
     }
 
     private void say(String line) {
@@ -1820,6 +2314,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         stopped = true;
+        if (calendarRunning) {
+            stopCalendar();
+            campaign.save(this);
+        }
         dismissProgress();
         super.onStop();
     }
