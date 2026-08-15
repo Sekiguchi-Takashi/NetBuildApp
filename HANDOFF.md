@@ -135,7 +135,7 @@ RouteHQApp の「JSON共有」から本アプリを選ぶと、実測データ�
 
 ## 現在のバージョン
 
-v2.4.1
+v2.4.2
 
 ## 実装済み
 
@@ -471,4 +471,6 @@ Scenario.zones        この案件に登場するゾーン。ルール編集の�
 - **`ci/` ディレクトリと `.github/workflows/release.yml` は削除しない**（追跡解除も含む）。
   配布ビルドに必要
 - タグを打つと Actions がビルドして Release を作り、自作アプリストアに更新として現れる
-- `.github/workflows/build.yml`（debug APK の確認用）は残してある。不要なら消してよい
+- `.github/workflows/build.yml` は **コンパイルが通るかの確認だけ** を行う。
+  `actions/upload-artifact` は入れない。Artifacts ストレージの無料枠（0.5GB）が枯渇すると
+  "Artifact storage quota has been hit" でビルドごと失敗するため。APK は Release から配布する
