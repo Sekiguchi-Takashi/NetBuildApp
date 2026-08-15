@@ -135,7 +135,7 @@ RouteHQApp の「JSON共有」から本アプリを選ぶと、実測データ�
 
 ## 現在のバージョン
 
-v2.4
+v2.4.1
 
 ## 実装済み
 
@@ -462,6 +462,13 @@ Scenario.zones        この案件に登場するゾーン。ルール編集の�
 4. 実機 NetGraph を案件の初期構成として取り込むモード
 5. LLM 接続は最後。会話生成だけを担当させ、判定は RuleEngine のまま維持する
 
-## ビルド
+## ビルドと配布
 
-GitHub Actions（.github/workflows/build.yml）で debug APK を出力。ローカルビルドはしない。
+- `deploy.sh` が push とタグ発行まで1コマンドで行う（恒久仕様）。
+  `git pull --rebase origin main` を必ず含める。カタログ管理システムが API 経由で
+  `.github/workflows/release.yml` と `ci/appathy.keystore` を直接コミットするため、
+  これが無いと push が rejected になる
+- **`ci/` ディレクトリと `.github/workflows/release.yml` は削除しない**（追跡解除も含む）。
+  配布ビルドに必要
+- タグを打つと Actions がビルドして Release を作り、自作アプリストアに更新として現れる
+- `.github/workflows/build.yml`（debug APK の確認用）は残してある。不要なら消してよい
