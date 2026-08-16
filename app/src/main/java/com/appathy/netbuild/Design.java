@@ -271,6 +271,67 @@ public class Design {
         return rules;
     }
 
+    /**
+     * いま採用している機能を短い札で並べる。
+     * トップ画面に出して、切り替えた結果がその場で分かるようにするためのもの。
+     */
+    public String badges(Scenario scenario) {
+        List<String> on = new ArrayList<>();
+        if (scenario != null && scenario.boundary == Scenario.Boundary.SASE) {
+            on.add("SASE");
+            if (!saseBypass) {
+                on.add("全通信検査");
+            }
+            if (ztna) {
+                on.add("認証アクセス");
+            }
+        } else {
+            if (guestVlan) {
+                on.add("VLAN分離");
+            }
+            if (dmz) {
+                on.add("DMZ");
+            }
+            if (!serverSharedWithWeb) {
+                on.add("サーバ分離");
+            }
+            if (proxy) {
+                on.add("プロキシ");
+            }
+            if (remoteVpn) {
+                on.add("VPN");
+            }
+            if (vendorOnDemand) {
+                on.add("保守申請制");
+            }
+            if (fwGuestDeny) {
+                on.add("来客Deny");
+            }
+        }
+        if (dnsRedundant) {
+            on.add("DNS2台");
+        }
+        if (redundantWan) {
+            on.add("回線2系統");
+        }
+        if (backup) {
+            on.add("バックアップ");
+        }
+        on.add("/" + prefixLength);
+        if (customRules != null) {
+            on.add("ルール手編集");
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < on.size(); i++) {
+            if (i > 0) {
+                sb.append(" ・ ");
+            }
+            sb.append(on.get(i));
+        }
+        return sb.toString();
+    }
+
     public String summary(Scenario scenario) {
         if (scenario != null && scenario.boundary == Scenario.Boundary.SASE) {
             return "検査の例外: " + (saseBypass ? "あり（迂回できる）" : "なし（全通信を検査）")

@@ -1,5 +1,15 @@
 # NetBuildApp HANDOFF
 
+### アイコンと採用機能の表示（v2.5）
+
+- アプリアイコンをルーター画像で作成。`mipmap-*/ic_launcher_foreground.png`（アダプティブ前景・
+  108dp相当を各密度で用意、中央58%に配置）と `ic_launcher.png` / `ic_launcher_round.png`（API26未満）。
+  背景色は `@color/ic_launcher_bg`（#12100C）。旧 VectorDrawable の前景は削除
+- トップ画面の状態帯の下に「採用中」の帯を追加（`tv_features`）。
+  `Design.badges(scenario)` が採用している機能だけを並べて返す。
+  設計モードでは案件の設計、経営モードでは選んでいる拠点の設計を表示する
+- 機能を切り替えると、その場でこの帯が変わる。SASE案件では SASE 系の項目に切り替わる
+
 ### BCPとサイバー攻撃（v2.4）
 
 設計に2項目追加。どちらも「壊れないようにする」ではなく「壊れても続く」ための備え。
@@ -135,7 +145,7 @@ RouteHQApp の「JSON共有」から本アプリを選ぶと、実測データ�
 
 ## 現在のバージョン
 
-v2.4.2
+v2.5
 
 ## 実装済み
 

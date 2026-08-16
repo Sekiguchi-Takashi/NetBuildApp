@@ -68,6 +68,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvIncident;
     private TextView tvBubble;
     private TextView tvHint;
+    private TextView tvFeatures;
     private HorizontalScrollView siteBar;
     private LinearLayout siteTabs;
 
@@ -105,6 +106,7 @@ public class MainActivity extends AppCompatActivity {
         tvIncident = findViewById(R.id.tv_incident);
         tvBubble = findViewById(R.id.tv_bubble);
         tvHint = findViewById(R.id.tv_hint);
+        tvFeatures = findViewById(R.id.tv_features);
         siteBar = findViewById(R.id.site_bar);
         siteTabs = findViewById(R.id.site_tabs);
 
@@ -2184,6 +2186,7 @@ public class MainActivity extends AppCompatActivity {
         siteBar.setVisibility(View.GONE);
         Incident.Cause active = current != null && !current.resolved ? current.cause : null;
         topology.update(design, active, scenario);
+        tvFeatures.setText("採用中: " + design.badges(scenario));
         tvDay.setText("Day " + state.day + (state.easyMode ? " 簡単" : ""));
         tvTrust.setText("信頼 " + state.trust);
         tvCost.setText("費用 " + (totalCost() / 10000) + "万");
@@ -2217,6 +2220,8 @@ public class MainActivity extends AppCompatActivity {
     /** 経営モードの表示。図は選んでいる拠点のもの、帯は会社の数字。 */
     private void refreshCampaign() {
         topology.update(activeSite.design, null, activeSite.scenario);
+        tvFeatures.setText(activeSite.name + " 採用中: "
+                + activeSite.design.badges(activeSite.scenario));
         tvDay.setText(campaign.year() + "年" + campaign.monthOfYear() + "月");
         tvTrust.setText("満足 " + campaign.satisfaction);
         tvCost.setText("資金 " + (campaign.cash / 10000) + "万");
