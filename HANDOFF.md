@@ -145,7 +145,7 @@ RouteHQApp の「JSON共有」から本アプリを選ぶと、実測データ�
 
 ## 現在のバージョン
 
-v2.5
+v2.5.1
 
 ## 実装済み
 
@@ -472,6 +472,20 @@ Scenario.zones        この案件に登場するゾーン。ルール編集の�
 4. 実機 NetGraph を案件の初期構成として取り込むモード
 5. LLM 接続は最後。会話生成だけを担当させ、判定は RuleEngine のまま維持する
 
+## 納品規約（恒久）
+
+1. `deploy.sh` は push → `git pull --rebase origin main` → タグ発行まで行う。
+   次タグは `git tag --list 'v*' | sort -V` の最大値から算出し、
+   `git tag <名> && git push origin <名>` でローカル発行する。
+   GitHub API の heads/releases 参照は反映遅延で一つ前のタグに付くため使わない。
+   第2引数に `notag` を渡すと push のみ
+2. `build.yml` は作らない。CI は `release.yml`（タグ起動）のみ。
+   `actions/upload-artifact` は使わない（Artifacts枠0.5GBが枯渇し全ビルドが落ちる）
+3. `ci/` と `.github/workflows/release.yml` は配布ビルドに必要。削除・追跡解除しない
+4. ファイルを削除する納品では `deploy.sh` に `rm -f <対象パス>` を足す
+   （`unzip -o` は端末の旧ファイルを消さないため）
+5. 納品はバージョン番号付きZIP + 同メッセージに実行4行ブロック。冒頭に【本番】か【テスト】を明示
+
 ## ビルドと配布
 
 - `deploy.sh` が push とタグ発行まで1コマンドで行う（恒久仕様）。
@@ -481,6 +495,5 @@ Scenario.zones        この案件に登場するゾーン。ルール編集の�
 - **`ci/` ディレクトリと `.github/workflows/release.yml` は削除しない**（追跡解除も含む）。
   配布ビルドに必要
 - タグを打つと Actions がビルドして Release を作り、自作アプリストアに更新として現れる
-- `.github/workflows/build.yml` は **コンパイルが通るかの確認だけ** を行う。
-  `actions/upload-artifact` は入れない。Artifacts ストレージの無料枠（0.5GB）が枯渇すると
-  "Artifact storage quota has been hit" でビルドごと失敗するため。APK は Release から配布する
+- `build.yml` は v2.5.1 で削除した。`deploy.sh` の `rm -f .github/workflows/build.yml` が
+  端末側の残骸も消す。CI は `release.yml` のみ
