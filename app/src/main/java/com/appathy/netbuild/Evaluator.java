@@ -161,6 +161,7 @@ public class Evaluator {
         // 確認できた要求ぶんだけ加点する。聞かないままでは満点にならない。
         r.requirementScore += scenario.revealedCount() * 5;
 
+        reviewNeeds(r, design, scenario);
         reviewRules(r, design, scenario);
 
         int unheard = scenario.hidden.size() - scenario.revealedCount();
@@ -177,6 +178,14 @@ public class Evaluator {
         return bestDesign(scenario, 0);
     }
 
+    /** その案件で必要とされているものを設計に反映する。 */
+    private void applyNeeds(Scenario scenario, Design d) {
+        d.dhcp = false;
+        for (Scenario.Need n : scenario.needs) {
+            d.set(n.key, true);
+        }
+    }
+
     public Design bestDesign(Scenario scenario, int extraBudget) {
         Design best = null;
         int bestScore = Integer.MIN_VALUE;
@@ -187,6 +196,7 @@ public class Evaluator {
                     for (boolean dns : two) {
                         for (int prefix : new int[]{24, 26}) {
                             Design c = new Design();
+                            applyNeeds(scenario, c);
                             c.saseBypass = bypass;
                             c.ztna = zt;
                             c.dnsRedundant = dns;
@@ -218,6 +228,7 @@ public class Evaluator {
                                             for (boolean ideal : flags) {
                                                 Design candidate = evaluateCandidate(
                                                         vlan, dmz, deny, dns, shared, px, prefix, vpn, onDemand);
+                                                applyNeeds(scenario, candidate);
                                                 if (ideal) {
                                                     candidate.customRules = candidate.idealRules(scenario);
                                                 }
@@ -302,6 +313,80 @@ public class Evaluator {
      * ルールそのものの点検（MD §14）。
      * 通信が通るかどうかとは別に、書き方の問題を見る。
      */
+    /**
+     * 案件が必要としているものが入っているか。
+     * 入れていない＝要求未達、必要でないものを入れた＝無駄な出費。
+     */
+    private void reviewNeeds(Result r, Design design, Scenario scenario) {
+        for (Scenario.Need need : scenario.needs) {
+            boolean confirmed = need.hiddenIndex < 0
+                    || (need.hiddenIndex < scenario.hidden.size()
+                    && scenario.hidden.get(need.hiddenIndex).revealed);
+            if (design.has(need.key)) {
+                if (confirmed) {
+                    r.requirementScore += 10;
+                } else {
+                    r.findings.add(new Finding("注意", need.label + "は入れていますが根拠が未確認です",
+                            "必要だから入れたのか、念のためなのかを区別できません"));
+                }
+            } else {
+                r.findings.add(new Finding("要求未達", need.label + "がありません",
+                        "この案件では必要だと聞いています"));
+                r.requirementScore -= 15;
+            }
+        }
+
+        for (String key : scenario.options) {
+            if (!design.has(key) || isNeeded(scenario, key)) {
+                continue;
+            }
+            if ("dmz".equals(key) || "proxy".equals(key) || "vlan".equals(key)
+                    || "vpn".equals(key)) {
+                continue; // 守りの投資は needs に無くても無駄とは言わない
+            }
+            r.findings.add(new Finding("注意", labelOf(key) + "は要りません",
+                    "この案件では使いません。入れたぶんだけ費用がかさみます"));
+            r.costScore -= 5;
+        }
+    }
+
+    private boolean isNeeded(Scenario scenario, String key) {
+        for (Scenario.Need n : scenario.needs) {
+            if (n.key.equals(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String labelOf(String key) {
+        if ("l3".equals(key)) {
+            return "L3スイッチ";
+        }
+        if ("wifi".equals(key)) {
+            return "無線LAN";
+        }
+        if ("fileshare".equals(key)) {
+            return "ファイル共有";
+        }
+        if ("mfp".equals(key)) {
+            return "複合機の接続";
+        }
+        if ("sitelink".equals(key)) {
+            return "拠点間接続";
+        }
+        if ("ipv6".equals(key)) {
+            return "IPv6";
+        }
+        if ("static".equals(key)) {
+            return "固定IP";
+        }
+        if ("dhcp".equals(key)) {
+            return "DHCP";
+        }
+        return key;
+    }
+
     private void reviewRules(Result r, Design design, Scenario scenario) {
         List<FirewallRule> rules = design.buildRules(scenario);
         List<String> covered = new ArrayList<>();

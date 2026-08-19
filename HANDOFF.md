@@ -1,5 +1,31 @@
 # NetBuildApp HANDOFF
 
+### 難易度3分類と設定項目の拡張（v2.6）
+
+**新しい設計項目**（`Design`）: `l3Switch` / `wifi` / `dhcp` / `staticForServers` /
+`ipv6` / `fileShare` / `mfp` / `siteLink`。`has(key)` / `set(key, value)` で
+キー文字列から出し入れできる。図には L3スイッチ・無線AP・ファイル共有・複合機・第2拠点が出る。
+
+**案件の難しさ**（`Scenario.Level`）: BEGINNER / INTERMEDIATE / ADVANCED。
+案件ごとに `options`（提示する選択肢）と `needs`（本当に必要なもの）を持つ。
+
+`Evaluator.reviewNeeds()` の判定は3方向。
+- needs にあるのに入れていない → 要求未達（-15）
+- needs にあり、根拠の要求も確認済み → +10
+- needs に無いのに入れた → 無駄な出費（-5）。ただし守りの投資（VLAN/DMZ/プロキシ/VPN）は除外
+
+初級で「聞かずに一式そろえる」と減点される構造になっている。
+
+**追加した案件**
+- `ventureCloud()` 初級A: クラウドのみ、社内に機器を置かない（SASE前提・予算30万）
+- `ventureOffice()` 初級B: ファイル共有と複合機だけ（ON_PREM・予算60万）
+- `outdoor()` は初級に分類し直した
+
+**未実装（次の版）**
+- 上級案件（複数拠点・数千人規模）
+- 構成図の3ページ横スクロール。いまは1画面に収める方式なので、
+  `TopologyView` の SLOTS にページ番号を持たせ、横ドラッグでページ送りする作りが要る
+
 ### アイコンと採用機能の表示（v2.5）
 
 - アプリアイコンをルーター画像で作成。`mipmap-*/ic_launcher_foreground.png`（アダプティブ前景・
@@ -145,7 +171,7 @@ RouteHQApp の「JSON共有」から本アプリを選ぶと、実測データ�
 
 ## 現在のバージョン
 
-v2.5.1
+v2.6
 
 ## 実装済み
 

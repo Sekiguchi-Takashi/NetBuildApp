@@ -61,6 +61,11 @@ public class TopologyView extends View {
         SLOTS.put("vendor", new Slot(R.drawable.ic_server, 0.98f, 0.06f, 0.98f, 0.04f));
         SLOTS.put("home", new Slot(R.drawable.ic_guest, 0.62f, 0.02f, 0.80f, 0.02f));
         SLOTS.put("sase", new Slot(R.drawable.ic_cloud, 0.42f, 0.20f, 0.40f, 0.16f));
+        SLOTS.put("l3", new Slot(R.drawable.ic_switch, 0.60f, 0.40f, 0.49f, 0.46f));
+        SLOTS.put("ap", new Slot(R.drawable.ic_wifi, 0.30f, 0.28f, 0.20f, 0.30f));
+        SLOTS.put("fs", new Slot(R.drawable.ic_server, 0.44f, 0.94f, 0.34f, 0.96f));
+        SLOTS.put("mfp", new Slot(R.drawable.ic_printer, 0.16f, 0.94f, 0.12f, 0.96f));
+        SLOTS.put("site2", new Slot(R.drawable.ic_site, 0.96f, 0.62f, 0.96f, 0.70f));
     }
 
     private static class Spot {

@@ -406,6 +406,14 @@ public class Campaign {
                 o.put("prefixLength", s.design.prefixLength);
                 o.put("redundantWan", s.design.redundantWan);
                 o.put("backup", s.design.backup);
+                o.put("l3Switch", s.design.l3Switch);
+                o.put("wifi", s.design.wifi);
+                o.put("dhcp", s.design.dhcp);
+                o.put("staticForServers", s.design.staticForServers);
+                o.put("ipv6", s.design.ipv6);
+                o.put("fileShare", s.design.fileShare);
+                o.put("mfp", s.design.mfp);
+                o.put("siteLink", s.design.siteLink);
                 arr.put(o);
             }
             root.put("sites", arr);
@@ -454,6 +462,14 @@ public class Campaign {
                     s.design.prefixLength = o.optInt("prefixLength", 26);
                     s.design.redundantWan = o.optBoolean("redundantWan");
                     s.design.backup = o.optBoolean("backup");
+                    s.design.l3Switch = o.optBoolean("l3Switch");
+                    s.design.wifi = o.optBoolean("wifi");
+                    s.design.dhcp = o.optBoolean("dhcp", true);
+                    s.design.staticForServers = o.optBoolean("staticForServers");
+                    s.design.ipv6 = o.optBoolean("ipv6");
+                    s.design.fileShare = o.optBoolean("fileShare");
+                    s.design.mfp = o.optBoolean("mfp");
+                    s.design.siteLink = o.optBoolean("siteLink");
                 }
             }
             return true;

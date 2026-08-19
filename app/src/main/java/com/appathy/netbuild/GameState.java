@@ -128,6 +128,16 @@ public class GameState {
             d.put("vendorOnDemand", design.vendorOnDemand);
             d.put("saseBypass", design.saseBypass);
             d.put("ztna", design.ztna);
+            d.put("redundantWan", design.redundantWan);
+            d.put("backup", design.backup);
+            d.put("l3Switch", design.l3Switch);
+            d.put("wifi", design.wifi);
+            d.put("dhcp", design.dhcp);
+            d.put("staticForServers", design.staticForServers);
+            d.put("ipv6", design.ipv6);
+            d.put("fileShare", design.fileShare);
+            d.put("mfp", design.mfp);
+            d.put("siteLink", design.siteLink);
             if (design.customRules != null) {
                 JSONArray rules = new JSONArray();
                 for (FirewallRule rule : design.customRules) {
@@ -202,6 +212,16 @@ public class GameState {
                 design.vendorOnDemand = d.optBoolean("vendorOnDemand");
                 design.saseBypass = d.optBoolean("saseBypass", true);
                 design.ztna = d.optBoolean("ztna");
+                design.redundantWan = d.optBoolean("redundantWan");
+                design.backup = d.optBoolean("backup");
+                design.l3Switch = d.optBoolean("l3Switch");
+                design.wifi = d.optBoolean("wifi");
+                design.dhcp = d.optBoolean("dhcp", true);
+                design.staticForServers = d.optBoolean("staticForServers");
+                design.ipv6 = d.optBoolean("ipv6");
+                design.fileShare = d.optBoolean("fileShare");
+                design.mfp = d.optBoolean("mfp");
+                design.siteLink = d.optBoolean("siteLink");
                 JSONArray rules = d.optJSONArray("rules");
                 if (rules != null) {
                     design.customRules = new java.util.ArrayList<>();

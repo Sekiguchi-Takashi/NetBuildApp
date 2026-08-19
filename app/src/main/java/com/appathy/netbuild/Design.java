@@ -23,6 +23,24 @@ public class Design {
     /** SASE案件のみ：事務所に残るシステムへのアクセスもSASE経由の認証つきにするか。 */
     public boolean ztna = false;
 
+    // --- 機器と方式の選択。案件によって使えるものが変わる ---
+    /** VLAN間をルーティングするL3スイッチを置くか。置かないとVLANは分かれたままになる。 */
+    public boolean l3Switch = false;
+    /** 無線LAN（アクセスポイント）を用意するか。 */
+    public boolean wifi = false;
+    /** 端末にDHCPで配るか。false なら全部を手で決める。 */
+    public boolean dhcp = true;
+    /** サーバや複合機を固定IPにするか。 */
+    public boolean staticForServers = false;
+    /** IPv6も通すか。 */
+    public boolean ipv6 = false;
+    /** ファイル共有を用意するか。 */
+    public boolean fileShare = false;
+    /** 複合機をネットワークにつなぐか。 */
+    public boolean mfp = false;
+    /** 拠点間を専用線やVPNでつなぐか。 */
+    public boolean siteLink = false;
+
     /** BCP: 回線を2系統にするか。片方が切れても止まらない。 */
     public boolean redundantWan = false;
     /** BCP: バックアップを取り、戻せる状態にしてあるか。 */
@@ -46,6 +64,14 @@ public class Design {
     public static final int COST_ZTNA = 120000;
     public static final int COST_REDUNDANT_WAN = 110000;
     public static final int COST_BACKUP = 90000;
+    public static final int COST_L3_SWITCH = 140000;
+    public static final int COST_WIFI = 120000;
+    public static final int COST_DHCP = 20000;
+    public static final int COST_STATIC = 30000;
+    public static final int COST_IPV6 = 50000;
+    public static final int COST_FILE_SHARE = 130000;
+    public static final int COST_MFP = 40000;
+    public static final int COST_SITE_LINK = 240000;
 
     public int cost() {
         return cost(null);
@@ -66,7 +92,7 @@ public class Design {
             if (prefixLength <= 24) {
                 total += COST_LARGE_SUBNET;
             }
-            return total + bcpCost();
+            return total + bcpCost() + optionCost();
         }
         int total = COST_BASE;
         if (guestVlan) {
@@ -93,7 +119,37 @@ public class Design {
         if (vendorOnDemand) {
             total += COST_VENDOR_PROCESS;
         }
-        return total + bcpCost();
+        return total + bcpCost() + optionCost();
+    }
+
+    /** 追加した機器と方式の費用。案件を問わず共通で効く。 */
+    private int optionCost() {
+        int total = 0;
+        if (l3Switch) {
+            total += COST_L3_SWITCH;
+        }
+        if (wifi) {
+            total += COST_WIFI;
+        }
+        if (dhcp) {
+            total += COST_DHCP;
+        }
+        if (staticForServers) {
+            total += COST_STATIC;
+        }
+        if (ipv6) {
+            total += COST_IPV6;
+        }
+        if (fileShare) {
+            total += COST_FILE_SHARE;
+        }
+        if (mfp) {
+            total += COST_MFP;
+        }
+        if (siteLink) {
+            total += COST_SITE_LINK;
+        }
+        return total;
     }
 
     private int bcpCost() {
@@ -105,6 +161,75 @@ public class Design {
             total += COST_BACKUP;
         }
         return total;
+    }
+
+    /** 選択肢のキー。案件が必要としているかどうかの照合に使う。 */
+    public boolean has(String key) {
+        if ("l3".equals(key)) {
+            return l3Switch;
+        }
+        if ("wifi".equals(key)) {
+            return wifi;
+        }
+        if ("dhcp".equals(key)) {
+            return dhcp;
+        }
+        if ("static".equals(key)) {
+            return staticForServers;
+        }
+        if ("ipv6".equals(key)) {
+            return ipv6;
+        }
+        if ("fileshare".equals(key)) {
+            return fileShare;
+        }
+        if ("mfp".equals(key)) {
+            return mfp;
+        }
+        if ("sitelink".equals(key)) {
+            return siteLink;
+        }
+        if ("dmz".equals(key)) {
+            return dmz;
+        }
+        if ("proxy".equals(key)) {
+            return proxy;
+        }
+        if ("vlan".equals(key)) {
+            return guestVlan;
+        }
+        if ("vpn".equals(key)) {
+            return remoteVpn;
+        }
+        return false;
+    }
+
+    public void set(String key, boolean value) {
+        if ("l3".equals(key)) {
+            l3Switch = value;
+        } else if ("wifi".equals(key)) {
+            wifi = value;
+        } else if ("dhcp".equals(key)) {
+            dhcp = value;
+        } else if ("static".equals(key)) {
+            staticForServers = value;
+        } else if ("ipv6".equals(key)) {
+            ipv6 = value;
+        } else if ("fileshare".equals(key)) {
+            fileShare = value;
+        } else if ("mfp".equals(key)) {
+            mfp = value;
+        } else if ("sitelink".equals(key)) {
+            siteLink = value;
+        } else if ("dmz".equals(key)) {
+            dmz = value;
+        } else if ("proxy".equals(key)) {
+            proxy = value;
+        } else if ("vlan".equals(key)) {
+            guestVlan = value;
+        } else if ("vpn".equals(key)) {
+            remoteVpn = value;
+        }
     }
 
     public long usableHosts() {
@@ -144,6 +269,21 @@ public class Design {
         g.edge("sase", "net", "wan");
         g.edge("cloud", "net", "wan");
         g.edge("srv", "sw", "lan");
+        if (l3Switch) {
+            g.edge("l3", "sw", "uplink");
+        }
+        if (wifi) {
+            g.edge("ap", "sw", "lan");
+        }
+        if (fileShare) {
+            g.edge("fs", "sw", "lan");
+        }
+        if (mfp) {
+            g.edge("mfp", "sw", "lan");
+        }
+        if (siteLink) {
+            g.edge("site2", "fw", "wan");
+        }
         g.edge("dns1", "sw", "lan");
         g.edge("sw", "fw", "uplink");
         g.edge("fw", "net", "wan");
@@ -177,6 +317,22 @@ public class Design {
         if (proxy) {
             g.node("proxy", "proxy", "プロキシ").put("zone", "internal").put("vlan", employeeVlan);
         }
+        if (l3Switch) {
+            g.node("l3", "switch", "L3スイッチ").put("zone", "infra");
+        }
+        if (wifi) {
+            g.node("ap", "ap", "無線AP").put("zone", "internal").put("vlan", employeeVlan);
+        }
+        if (fileShare) {
+            g.node("fs", "server", "ファイル共有")
+                    .put("zone", "internal").put("vlan", employeeVlan);
+        }
+        if (mfp) {
+            g.node("mfp", "printer", "複合機").put("zone", "internal").put("vlan", employeeVlan);
+        }
+        if (siteLink) {
+            g.node("site2", "site", "第2拠点").put("zone", "internal").put("vlan", employeeVlan);
+        }
         g.node("cloud", "cloud", "クラウド").put("zone", "cloud");
         g.node("vendor", "server", "保守業者").put("zone", "vendor");
         g.node("home", "host", "在宅端末").put("zone", "remote");
@@ -191,6 +347,21 @@ public class Design {
         g.edge("srv", "sw", "lan");
         if (proxy) {
             g.edge("proxy", "sw", "lan");
+        }
+        if (l3Switch) {
+            g.edge("l3", "sw", "uplink");
+        }
+        if (wifi) {
+            g.edge("ap", "sw", "lan");
+        }
+        if (fileShare) {
+            g.edge("fs", "sw", "lan");
+        }
+        if (mfp) {
+            g.edge("mfp", "sw", "lan");
+        }
+        if (siteLink) {
+            g.edge("site2", "fw", "wan");
         }
         g.edge("dns1", "sw", "lan");
         if (dnsRedundant) {
@@ -308,6 +479,28 @@ public class Design {
                 on.add("来客Deny");
             }
         }
+        if (l3Switch) {
+            on.add("L3スイッチ");
+        }
+        if (wifi) {
+            on.add("Wi-Fi");
+        }
+        if (fileShare) {
+            on.add("ファイル共有");
+        }
+        if (mfp) {
+            on.add("複合機");
+        }
+        if (siteLink) {
+            on.add("拠点間接続");
+        }
+        on.add(dhcp ? "DHCP" : "全て固定IP");
+        if (staticForServers) {
+            on.add("サーバ固定IP");
+        }
+        if (ipv6) {
+            on.add("IPv6");
+        }
         if (dnsRedundant) {
             on.add("DNS2台");
         }
@@ -356,6 +549,8 @@ public class Design {
                 + " / 保守接続: " + (vendorOnDemand ? "必要時のみ" : "常時")
                 + " / 回線: " + (redundantWan ? "2系統" : "1系統")
                 + " / バックアップ: " + (backup ? "あり" : "なし")
+                + " / L3: " + (l3Switch ? "あり" : "なし")
+                + " / 無線: " + (wifi ? "あり" : "なし")
                 + " / FWルール: " + (customRules == null ? "自動" : "手編集" + customRules.size() + "件");
     }
 }

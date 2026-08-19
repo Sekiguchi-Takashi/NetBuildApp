@@ -261,6 +261,14 @@ public class MainActivity extends AppCompatActivity {
                 switchScenario();
             }
         });
+        if (!campaignMode) {
+            actions.add("この案件で選べる項目");
+            handlers.add(new Runnable() {
+                public void run() {
+                    optionsMenu();
+                }
+            });
+        }
         actions.add("マニュアルを読む");
         handlers.add(new Runnable() {
             public void run() {
@@ -901,6 +909,14 @@ public class MainActivity extends AppCompatActivity {
         design.prefixLength = 26;
         design.redundantWan = false;
         design.backup = false;
+        design.l3Switch = false;
+        design.wifi = false;
+        design.dhcp = true;
+        design.staticForServers = false;
+        design.ipv6 = false;
+        design.fileShare = false;
+        design.mfp = false;
+        design.siteLink = false;
         design.customRules = null;
     }
 
@@ -909,7 +925,7 @@ public class MainActivity extends AppCompatActivity {
         String[] labels = new String[all.size()];
         for (int i = 0; i < all.size(); i++) {
             Scenario sc = all.get(i);
-            labels[i] = sc.client + "（" + sc.boundary.label + "）"
+            labels[i] = "[" + sc.level.label + "] " + sc.client + "（" + sc.boundary.label + "）"
                     + (sc.id.equals(scenario.id) ? "  ← 対応中" : "");
         }
         new AlertDialog.Builder(this)
@@ -1693,6 +1709,23 @@ public class MainActivity extends AppCompatActivity {
                             });
                         }
                     }, "dns");
+        } else if ("ap".equals(id) || "fs".equals(id) || "mfp".equals(id)
+                || "l3".equals(id) || "site2".equals(id)) {
+            String key = "ap".equals(id) ? "wifi"
+                    : "fs".equals(id) ? "fileshare"
+                    : "mfp".equals(id) ? "mfp"
+                    : "l3".equals(id) ? "l3" : "sitelink";
+            final String k = key;
+            toggleDialog(optionLabel(k), optionDetail(k), "この機器をやめる",
+                    new Runnable() {
+                        public void run() {
+                            changeDesign(new Runnable() {
+                                public void run() {
+                                    design.set(k, false);
+                                }
+                            });
+                        }
+                    }, "sw");
         } else if ("net".equals(id)) {
             toggleDialog("回線（BCP）",
                     "ISPからの回線です。到達可否はFirewallのルールで決まりますが、"
@@ -1726,6 +1759,115 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /** 境界まわりの操作をまとめる。 */
+    /** その案件で選べる項目を一覧で出す。図に出ない設定はここから触る。 */
+    private void optionsMenu() {
+        final String[] keys = scenario.options;
+        String[] labels = new String[keys.length];
+        for (int i = 0; i < keys.length; i++) {
+            labels[i] = (design.has(keys[i]) ? "[採用] " : "[   ] ") + optionLabel(keys[i]);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("この案件で選べる項目")
+                .setItems(labels, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        final String key = keys[which];
+                        new AlertDialog.Builder(MainActivity.this)
+                                .setTitle(optionLabel(key))
+                                .setMessage(optionDetail(key) + "\n\n現在: "
+                                        + (design.has(key) ? "採用している" : "採用していない"))
+                                .setNegativeButton("閉じる", null)
+                                .setPositiveButton(design.has(key) ? "やめる" : "採用する",
+                                        new DialogInterface.OnClickListener() {
+                                            public void onClick(DialogInterface d, int w) {
+                                                final boolean now = design.has(key);
+                                                changeDesign(new Runnable() {
+                                                    public void run() {
+                                                        design.set(key, !now);
+                                                    }
+                                                });
+                                            }
+                                        })
+                                .show();
+                    }
+                })
+                .setNegativeButton("閉じる", null)
+                .show();
+    }
+
+    private String optionLabel(String key) {
+        if ("l3".equals(key)) {
+            return "L3スイッチ（VLAN間のルーティング）";
+        }
+        if ("wifi".equals(key)) {
+            return "無線LAN（Wi-Fi）";
+        }
+        if ("dhcp".equals(key)) {
+            return "DHCP（アドレスの自動割り当て）";
+        }
+        if ("static".equals(key)) {
+            return "サーバー・複合機の固定IP";
+        }
+        if ("ipv6".equals(key)) {
+            return "IPv6も通す";
+        }
+        if ("fileshare".equals(key)) {
+            return "ファイル共有";
+        }
+        if ("mfp".equals(key)) {
+            return "複合機をネットワークにつなぐ";
+        }
+        if ("sitelink".equals(key)) {
+            return "拠点間の接続";
+        }
+        if ("dmz".equals(key)) {
+            return "DMZ";
+        }
+        if ("proxy".equals(key)) {
+            return "プロキシ";
+        }
+        if ("vlan".equals(key)) {
+            return "来客のVLAN分離";
+        }
+        if ("vpn".equals(key)) {
+            return "リモートアクセスVPN";
+        }
+        return key;
+    }
+
+    private String optionDetail(String key) {
+        if ("l3".equals(key)) {
+            return "VLANで分けたセグメント同士を通したいときに要ります。"
+                    + "L2スイッチだけでは、分けたVLANは互いに届きません。"
+                    + "分けたままでよいなら不要です。";
+        }
+        if ("wifi".equals(key)) {
+            return "ノートPCやタブレット、スマートフォンをつなぎます。"
+                    + "有線の口が無い事務所では、これが無いと誰もつなげません。";
+        }
+        if ("dhcp".equals(key)) {
+            return "端末にアドレスを自動で配ります。"
+                    + "これが無いと、1台ずつ手で設定して回ることになります。";
+        }
+        if ("static".equals(key)) {
+            return "サーバーや複合機は、アドレスが変わると呼べなくなります。"
+                    + "端末はDHCP、機器は固定、という組み合わせが基本です。";
+        }
+        if ("ipv6".equals(key)) {
+            return "IPv6も通します。要件が無いのに有効にすると、"
+                    + "IPv4側だけを塞いだつもりで抜け道が残ることがあります。";
+        }
+        if ("fileshare".equals(key)) {
+            return "資料を置いて共有します。USBの手渡しをやめる代わりになります。";
+        }
+        if ("mfp".equals(key)) {
+            return "複合機をネットワークにつなぎ、各席から印刷とスキャンができるようにします。";
+        }
+        if ("sitelink".equals(key)) {
+            return "離れた拠点同士をつなぎます。専用線やVPNを使います。";
+        }
+        return "この案件で選べる項目です。";
+    }
+
     private void firewallMenu() {
         final List<String> items = new ArrayList<>();
         final List<Runnable> actions = new ArrayList<>();

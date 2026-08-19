@@ -7,6 +7,38 @@ import java.util.List;
 /** MD §8 / §9。表面要求と隠れた要求を分けて持つ。 */
 public class Scenario {
 
+    /** 案件の難しさ。使える選択肢の数と、聞き出す要求の量が変わる。 */
+    public enum Level {
+        BEGINNER("初級", "起業したての会社。決めることは少ない"),
+        INTERMEDIATE("中級", "一通りの機器がある1拠点。人数は多くない"),
+        ADVANCED("上級", "複数拠点・数千人規模。条件を聞き出すところから");
+
+        public final String label;
+        public final String detail;
+
+        Level(String label, String detail) {
+            this.label = label;
+            this.detail = detail;
+        }
+    }
+
+    /**
+     * その案件で本当に必要なもの。
+     * 聞き出せていれば加点され、必要なのに入れていなければ減点。
+     * 逆に、ここに無いものを入れると無駄な出費になる。
+     */
+    public static class Need {
+        public final String key;
+        public final String label;
+        public final int hiddenIndex;
+
+        public Need(String key, String label, int hiddenIndex) {
+            this.key = key;
+            this.label = label;
+            this.hiddenIndex = hiddenIndex;
+        }
+    }
+
     /** 境界をどこに置くかは案件の前提として決まっている。プレイヤーは選べない。 */
     public enum Boundary {
         ON_PREM("自前の境界", "拠点にFirewallを置き、そこを通して外とやりとりする"),
@@ -95,6 +127,12 @@ public class Scenario {
 
     public final String id;
     public final Boundary boundary;
+    public Level level = Level.INTERMEDIATE;
+    /** この案件で必要なもの。 */
+    public final List<Need> needs = new ArrayList<>();
+    /** この案件で選べる項目のキー。needs に無いものも含めて、提示だけはされる。 */
+    public String[] options = {"vlan", "dmz", "proxy", "vpn", "l3", "wifi",
+            "fileshare", "mfp", "sitelink", "dhcp", "static", "ipv6"};
     public final String personality;
     public final List<Allowance> allowances = new ArrayList<>();
     public final List<Prohibition> prohibitions = new ArrayList<>();
@@ -148,6 +186,12 @@ public class Scenario {
                 1000000, 50, 200,
                 "専門用語を出すと黙ってうなずくだけになる。要望は聞かれるまで自分からは言わない",
                 hidden);
+        s.level = Level.INTERMEDIATE;
+        s.options = new String[]{"vlan", "dmz", "proxy", "vpn", "wifi", "fileshare",
+                "mfp", "dhcp", "static", "l3"};
+        s.needs.add(new Need("wifi", "無線LAN", 1));
+        s.needs.add(new Need("dhcp", "DHCPでの自動割り当て", 0));
+        s.needs.add(new Need("vlan", "来客の分離", 1));
 
         // 点数がつく要求
         s.allowances.add(new Allowance("guest", "internet", "guest", "net",
@@ -202,6 +246,9 @@ public class Scenario {
                 800000, 40, 80,
                 "ITに詳しくないが判断は速い。決めたことは自分から周知してくれる",
                 hidden);
+        s.level = Level.INTERMEDIATE;
+        s.options = new String[]{"wifi", "dhcp", "ipv6", "fileshare"};
+        s.needs.add(new Need("dhcp", "DHCPでの自動割り当て", -1));
         s.zones = new String[]{"internal", "remote", "cloud", "internet"};
 
         s.allowances.add(new Allowance("remote", "cloud", "home", "cloud",
@@ -245,6 +292,13 @@ public class Scenario {
                 1200000, 80, 120,
                 "現場の話は具体的だが、ITの話になると「お任せします」と言う",
                 hidden);
+        s.level = Level.INTERMEDIATE;
+        s.options = new String[]{"vlan", "proxy", "wifi", "fileshare", "mfp",
+                "dhcp", "static", "l3", "dmz"};
+        s.needs.add(new Need("wifi", "無線LAN（現場のタブレット）", 1));
+        s.needs.add(new Need("dhcp", "DHCPでの自動割り当て", -1));
+        s.needs.add(new Need("static", "装置と複合機の固定IP", -1));
+        s.needs.add(new Need("mfp", "複合機の接続", -1));
 
         s.allowances.add(new Allowance("internal", "cloud", "pc", "cloud",
                 "生産管理クラウドへの接続", 1, true, 20, 25));
@@ -290,7 +344,11 @@ public class Scenario {
                 500000, 20, 25,
                 "急いでいる。細かい話より、いつ使えるようになるかを気にする",
                 hidden);
+        s.level = Level.BEGINNER;
         s.zones = new String[]{"guest", "internal", "cloud", "internet"};
+        s.options = new String[]{"vlan", "wifi", "dhcp"};
+        s.needs.add(new Need("wifi", "無線LAN", 0));
+        s.needs.add(new Need("dhcp", "DHCPでの自動割り当て", 0));
 
         s.allowances.add(new Allowance("internal", "cloud", "pc", "cloud",
                 "現場から図面クラウドへの接続", 1, true, 20, 25));
@@ -308,8 +366,84 @@ public class Scenario {
         return s;
     }
 
+    /** 初級A：クラウドだけで回す。社内にネットワーク機器を置かない。 */
+    public static Scenario ventureCloud() {
+        List<Hidden> hidden = new ArrayList<>(Arrays.asList(
+                new Hidden("業務で使うものはどこにありますか？",
+                        "全部クラウドです。会計も、チャットも、ファイルも。",
+                        "社内にサーバーを置く必要がない",
+                        "オフィスに機器らしいものが1つも置かれていない"),
+                new Hidden("事務所では何人が同時に使いますか？",
+                        "5人です。ノートPCと、たまにスマホです。",
+                        "無線があれば足りる。有線の配線工事は不要",
+                        "机にLANの口がなく、全員ノートPCを使っている"),
+                new Hidden("印刷はどうしていますか？",
+                        "コンビニです。社判を押す書類くらいしか印刷しません。",
+                        "複合機は不要",
+                        "オフィスにプリンタが置かれていない")
+        ));
+
+        Scenario s = new Scenario("venture-cloud", Boundary.SASE,
+                "スタートアップA（クラウド専業）", "事務所でネットが使えるようにしたい",
+                300000, 5, 15,
+                "判断が速い。要らないものは要らないとはっきり言う",
+                hidden);
+        s.level = Level.BEGINNER;
+        s.zones = new String[]{"internal", "cloud", "internet"};
+        s.options = new String[]{"wifi", "dhcp", "ipv6"};
+        s.needs.add(new Need("wifi", "無線LAN", 1));
+        s.needs.add(new Need("dhcp", "DHCPでの自動割り当て", -1));
+
+        s.allowances.add(new Allowance("internal", "cloud", "pc", "cloud",
+                "クラウド業務システムへの接続", 0, true, 25, 30));
+        s.allowances.add(new Allowance("internal", "internet", "pc", "net",
+                "社員のインターネット利用", -1, false, 0, 0));
+        s.prohibitions.add(new Prohibition("net", "pc",
+                "インターネットから社内端末へ到達できます",
+                "置いている機器が少なくても、外から入れる経路は塞ぎます", 25, 20));
+        return s;
+    }
+
+    /** 初級B：社内にサーバーとファイル共有と複合機を置く。外向けは無し。 */
+    public static Scenario ventureOffice() {
+        List<Hidden> hidden = new ArrayList<>(Arrays.asList(
+                new Hidden("資料はどうやって共有していますか？",
+                        "USBメモリで手渡ししています。そろそろ限界です。",
+                        "ファイル共有が必要",
+                        "机の上にUSBメモリが何本も転がっている"),
+                new Hidden("印刷やスキャンはどれくらい使いますか？",
+                        "毎日です。見積書と図面を刷ります。スキャンも使います。",
+                        "複合機をネットワークにつなぐ必要がある",
+                        "複合機の前に順番待ちの列ができている"),
+                new Hidden("席は決まっていますか？",
+                        "固定席です。人の増減も年に数人くらいです。",
+                        "端末は自動割り当てで足りる。サーバーと複合機は固定にする",
+                        "机に名札が貼ってあり、配置が変わった様子がない")
+        ));
+
+        Scenario s = new Scenario("venture-office", Boundary.ON_PREM,
+                "スタートアップB（社内共有あり）", "USBのやりとりをやめたい",
+                600000, 12, 25,
+                "現場の困りごとは具体的に話すが、機器の名前は出てこない",
+                hidden);
+        s.level = Level.BEGINNER;
+        s.zones = new String[]{"internal", "internet"};
+        s.options = new String[]{"fileshare", "mfp", "wifi", "dhcp", "static"};
+        s.needs.add(new Need("fileshare", "ファイル共有", 0));
+        s.needs.add(new Need("mfp", "複合機の接続", 1));
+        s.needs.add(new Need("dhcp", "端末へのDHCP", 2));
+        s.needs.add(new Need("static", "サーバーと複合機の固定IP", 2));
+
+        s.allowances.add(new Allowance("internal", "internet", "pc", "net",
+                "社員のインターネット利用", -1, false, 0, 0));
+        s.prohibitions.add(new Prohibition("net", "pc",
+                "インターネットから社内へ到達できます",
+                "外に見せるものが無いので、入る経路は塞ぎます", 30, 25));
+        return s;
+    }
+
     public static List<Scenario> all() {
-        return new ArrayList<>(Arrays.asList(office(), factory(), outdoor(), distributed()));
+        return new ArrayList<>(Arrays.asList(ventureCloud(), ventureOffice(), outdoor(), office(), factory(), distributed()));
     }
 
     public int revealedCount() {
