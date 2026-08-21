@@ -54,6 +54,8 @@ public class Design {
     public static final int COST_VLAN = 90000;
     public static final int COST_DMZ = 260000;
     public static final int COST_LARGE_SUBNET = 60000;
+    /** /22 以上に広げるときの追加。台数が増えるとL3側の設計も要る。 */
+    public static final int COST_HUGE_SUBNET = 180000;
     public static final int COST_DNS_SECONDARY = 40000;
     public static final int COST_SERVER_SEGMENT = 80000;
     public static final int COST_PROXY = 150000;
@@ -92,6 +94,9 @@ public class Design {
             if (prefixLength <= 24) {
                 total += COST_LARGE_SUBNET;
             }
+            if (prefixLength <= 22) {
+                total += COST_HUGE_SUBNET;
+            }
             return total + bcpCost() + optionCost();
         }
         int total = COST_BASE;
@@ -103,6 +108,9 @@ public class Design {
         }
         if (prefixLength <= 24) {
             total += COST_LARGE_SUBNET;
+        }
+        if (prefixLength <= 22) {
+            total += COST_HUGE_SUBNET;
         }
         if (dnsRedundant) {
             total += COST_DNS_SECONDARY;
@@ -283,6 +291,10 @@ public class Design {
         }
         if (siteLink) {
             g.edge("site2", "fw", "wan");
+            g.edge("site2sw", "site2", "uplink");
+            g.edge("site2pc", "site2sw", "lan");
+            g.edge("site3", "fw", "wan");
+            g.edge("site3pc", "site3", "lan");
         }
         g.edge("dns1", "sw", "lan");
         g.edge("sw", "fw", "uplink");
@@ -332,6 +344,10 @@ public class Design {
         }
         if (siteLink) {
             g.node("site2", "site", "第2拠点").put("zone", "internal").put("vlan", employeeVlan);
+            g.node("site2sw", "switch", "第2拠点スイッチ").put("zone", "infra");
+            g.node("site2pc", "host", "第2拠点PC").put("zone", "internal").put("vlan", employeeVlan);
+            g.node("site3", "site", "第3拠点").put("zone", "internal").put("vlan", employeeVlan);
+            g.node("site3pc", "host", "第3拠点PC").put("zone", "internal").put("vlan", employeeVlan);
         }
         g.node("cloud", "cloud", "クラウド").put("zone", "cloud");
         g.node("vendor", "server", "保守業者").put("zone", "vendor");
@@ -362,6 +378,10 @@ public class Design {
         }
         if (siteLink) {
             g.edge("site2", "fw", "wan");
+            g.edge("site2sw", "site2", "uplink");
+            g.edge("site2pc", "site2sw", "lan");
+            g.edge("site3", "fw", "wan");
+            g.edge("site3pc", "site3", "lan");
         }
         g.edge("dns1", "sw", "lan");
         if (dnsRedundant) {

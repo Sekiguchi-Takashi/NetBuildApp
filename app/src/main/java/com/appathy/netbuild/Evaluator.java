@@ -194,7 +194,7 @@ public class Evaluator {
             for (boolean bypass : two) {
                 for (boolean zt : two) {
                     for (boolean dns : two) {
-                        for (int prefix : new int[]{24, 26}) {
+                        for (int prefix : new int[]{19, 22, 24, 26}) {
                             Design c = new Design();
                             applyNeeds(scenario, c);
                             c.saseBypass = bypass;
@@ -215,7 +215,7 @@ public class Evaluator {
             return best;
         }
         boolean[] flags = {false, true};
-        int[] prefixes = {24, 26};
+        int[] prefixes = {19, 22, 24, 26};
         for (boolean vlan : flags) {
             for (boolean dmz : flags) {
                 for (boolean deny : flags) {

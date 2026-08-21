@@ -442,8 +442,89 @@ public class Scenario {
         return s;
     }
 
+    /** 上級：3拠点・数千人規模。条件を全部聞き出さないと組み立てられない。 */
+    public static Scenario enterprise() {
+        List<Hidden> hidden = new ArrayList<>(Arrays.asList(
+                new Hidden("拠点はいくつありますか？",
+                        "本社と、工場が2つです。工場は県外にあります。",
+                        "3拠点を結ぶ必要がある",
+                        "受付に「本社・第二工場・第三工場」と書かれた内線表がある"),
+                new Hidden("全社で何人くらいですか？",
+                        "3,200人です。来年、統合でもう1,000人増える予定です。",
+                        "4,000人以上を収容できるアドレス設計が必要",
+                        "駐車場が広く、社員用のバスが何台も停まっている"),
+                new Hidden("在宅勤務はありますか？",
+                        "本社の事務部門は半分が在宅です。工場は現場なので出社です。",
+                        "在宅から社内へ接続する手段が必要",
+                        "本社の席が半分ほど空いている"),
+                new Hidden("外部に公開しているものはありますか？",
+                        "採用サイトと、取引先向けの受発注システムがあります。",
+                        "公開サーバーをDMZに置く必要がある",
+                        "名刺にURLが2つ印刷されている"),
+                new Hidden("装置の保守はどうしていますか？",
+                        "工場の装置はメーカーが遠隔で見ています。常時つながっています。",
+                        "保守接続は必要なときだけ開ける",
+                        "工場の装置に、メーカー名の通信機器が付いている"),
+                new Hidden("印刷や資料の共有はどうしていますか？",
+                        "各フロアに複合機があります。資料は部門ごとの共有サーバーです。",
+                        "複合機とファイル共有が必要",
+                        "フロアの角に複合機が並んでいる"),
+                new Hidden("無線は使っていますか？",
+                        "会議室と工場の現場で使います。来客もよく来ます。",
+                        "無線LANと、来客の分離が必要",
+                        "会議室にアクセスポイントが見える")
+        ));
+
+        Scenario s = new Scenario("enterprise", Boundary.ON_PREM,
+                "大手製造業（3拠点・3,200人）", "老朽化した社内ネットワークを刷新したい",
+                2800000, 3200, 4200,
+                "情報システム部の担当。聞けば答えるが、聞かれないことは言わない",
+                hidden);
+        s.level = Level.ADVANCED;
+        s.zones = new String[]{"guest", "internal", "dmz", "internet", "remote", "vendor", "cloud"};
+        s.options = new String[]{"vlan", "dmz", "proxy", "vpn", "l3", "wifi",
+                "fileshare", "mfp", "sitelink", "dhcp", "static", "ipv6"};
+        s.needs.add(new Need("sitelink", "拠点間の接続", 0));
+        s.needs.add(new Need("vpn", "在宅からの接続", 2));
+        s.needs.add(new Need("dmz", "公開サーバーのDMZ", 3));
+        s.needs.add(new Need("mfp", "複合機の接続", 5));
+        s.needs.add(new Need("fileshare", "ファイル共有", 5));
+        s.needs.add(new Need("wifi", "無線LAN", 6));
+        s.needs.add(new Need("vlan", "来客の分離", 6));
+        s.needs.add(new Need("l3", "VLAN間のルーティング", 6));
+        s.needs.add(new Need("dhcp", "DHCPでの自動割り当て", 1));
+        s.needs.add(new Need("static", "サーバー・複合機の固定IP", -1));
+
+        s.allowances.add(new Allowance("guest", "internet", "guest", "net",
+                "来客のインターネット利用", 6, true, 10, 15));
+        s.allowances.add(new Allowance("internet", "dmz", "net", "web",
+                "受発注システムと採用サイトの公開", 3, true, 20, 25));
+        s.allowances.add(new Allowance("remote", "internal", "home", "pc",
+                "在宅から社内システムへの接続", 2, true, 20, 25));
+        s.allowances.add(new Allowance("internal", "internet", "pc", "net",
+                "社員のインターネット利用", -1, false, 0, 0));
+        s.allowances.add(new Allowance("internal", "dmz", "pc", "web",
+                "公開サーバーの管理", -1, false, 0, 0));
+        s.allowances.add(new Allowance("internal", "cloud", "pc", "cloud",
+                "クラウドサービスの利用", -1, false, 0, 0));
+
+        s.prohibitions.add(new Prohibition("guest", "pc",
+                "来客端末から社内へ到達できます",
+                "3,200人が使う社内が、来客の端末から見える状態です", 35, 25));
+        s.prohibitions.add(new Prohibition("net", "pc",
+                "インターネットから社内へ到達できます",
+                "公開しているものと社内が同じ場所にあります", 40, 25));
+        s.prohibitions.add(new Prohibition("net", "srv",
+                "インターネットから社内サーバーへ到達できます",
+                "部門の共有資料が外から触れる状態です", 30, 20));
+        s.prohibitions.add(new Prohibition("vendor", "pc",
+                "保守業者から社内へ常時到達できます",
+                "工場の装置メーカーの回線が開きっぱなしです", 25, 20));
+        return s;
+    }
+
     public static List<Scenario> all() {
-        return new ArrayList<>(Arrays.asList(ventureCloud(), ventureOffice(), outdoor(), office(), factory(), distributed()));
+        return new ArrayList<>(Arrays.asList(ventureCloud(), ventureOffice(), outdoor(), office(), factory(), distributed(), enterprise()));
     }
 
     public int revealedCount() {

@@ -1583,12 +1583,12 @@ public class MainActivity extends AppCompatActivity {
             toggleDialog("社員PC / 内部サブネット",
                     "内部セグメントの広さ。将来の台数に足りるかどうかを決めます。\n\n現在: /"
                             + design.prefixLength + "（" + design.usableHosts() + " 台まで）",
-                    design.prefixLength <= 24 ? "/26 に狭める（-6万円）" : "/24 に広げる（+6万円）",
+                    "次の広さにする（/26 → /24 → /22 → /19 → /26）",
                     new Runnable() {
                         public void run() {
                             changeDesign(new Runnable() {
                                 public void run() {
-                                    design.prefixLength = design.prefixLength <= 24 ? 26 : 24;
+                                    design.prefixLength = nextPrefix(design.prefixLength);
                                 }
                             });
                         }
@@ -2071,9 +2071,9 @@ public class MainActivity extends AppCompatActivity {
                     });
         } else if ("pc".equals(id)) {
             campaignToggle("サブネット", "/" + d.prefixLength + "（" + d.usableHosts() + "台）",
-                    d.prefixLength <= 24 ? "/26 に狭める" : "/24 に広げる", new Runnable() {
+                    "次の広さにする", new Runnable() {
                         public void run() {
-                            d.prefixLength = d.prefixLength <= 24 ? 26 : 24;
+                            d.prefixLength = nextPrefix(d.prefixLength);
                         }
                     });
         } else if ("fw".equals(id)) {
@@ -2130,6 +2130,20 @@ public class MainActivity extends AppCompatActivity {
         } else {
             show("この機器", "ここは設計で変えられません。");
         }
+    }
+
+    /** サブネットの広さを順に切り替える。 */
+    private int nextPrefix(int current) {
+        if (current == 26) {
+            return 24;
+        }
+        if (current == 24) {
+            return 22;
+        }
+        if (current == 22) {
+            return 19;
+        }
+        return 26;
     }
 
     private void campaignToggle(String title, String now, String action, final Runnable change) {
