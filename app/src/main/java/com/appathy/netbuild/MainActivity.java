@@ -928,6 +928,15 @@ public class MainActivity extends AppCompatActivity {
         design.customRules = null;
     }
 
+    /** ボタンにひとつの動作を結びつける。 */
+    private void bind(int id, final Runnable action) {
+        findViewById(id).setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                action.run();
+            }
+        });
+    }
+
     private void showTitle() {
         atTitle = true;
         stopCalendar();
