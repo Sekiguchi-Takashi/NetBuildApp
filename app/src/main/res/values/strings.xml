@@ -3,4 +3,14 @@
     <string name="app_name">NetBuild</string>
     <string name="staff_label">自社の社員</string>
     <string name="client_label">依頼者</string>
+    <string name="title_tagline">ネットワークを設計して納める仕事のゲーム</string>
+    <string name="title_design">案件を受ける（設計モード）</string>
+    <string name="title_design_desc">1件の案件を、要望を聞くところから納品まで。初級・中級・上級から選びます。</string>
+    <string name="title_campaign">10年の経営</string>
+    <string name="title_campaign_desc">複数の拠点を受け持ち、10年ぶんの運用と障害対応をこなします。</string>
+    <string name="title_study">学習メニュー</string>
+    <string name="title_study_desc">マニュアルと機器の説明。用語を先に押さえておきたいときに。</string>
+    <string name="title_real">いま使っているネットワークを見る</string>
+    <string name="title_real_desc">この端末の接続を調べ、ゲームと同じ観点で点検し、出題もします。</string>
+    <string name="title_results">これまでの成績</string>
 </resources>

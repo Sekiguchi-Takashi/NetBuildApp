@@ -293,6 +293,7 @@ public class Scenario {
                 "現場の話は具体的だが、ITの話になると「お任せします」と言う",
                 hidden);
         s.level = Level.INTERMEDIATE;
+        s.zones = new String[]{"guest", "internal", "internet", "cloud", "vendor"};
         s.options = new String[]{"vlan", "proxy", "wifi", "fileshare", "mfp",
                 "dhcp", "static", "l3", "dmz"};
         s.needs.add(new Need("wifi", "無線LAN（現場のタブレット）", 1));
@@ -525,6 +526,30 @@ public class Scenario {
 
     public static List<Scenario> all() {
         return new ArrayList<>(Arrays.asList(ventureCloud(), ventureOffice(), outdoor(), office(), factory(), distributed(), enterprise()));
+    }
+
+    /** その案件の話に出てくるノードかどうか。図に何を出すかの判断に使う。 */
+    public boolean usesNode(String id) {
+        for (Allowance a : allowances) {
+            if (a.fromNode.equals(id) || a.toNode.equals(id)) {
+                return true;
+            }
+        }
+        for (Prohibition p : prohibitions) {
+            if (p.fromNode.equals(id) || p.toNode.equals(id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean usesZone(String zone) {
+        for (String z : zones) {
+            if (z.equals(zone)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public int revealedCount() {

@@ -47,6 +47,9 @@ public class MainActivity extends AppCompatActivity {
     private final RealQuiz realQuiz = new RealQuiz();
     private final Campaign campaign = new Campaign();
     private boolean campaignMode;
+    /** タイトルにいるあいだは true。プレイ中はモードを変えられない。 */
+    private boolean atTitle = true;
+    private View titlePanel;
     private Site activeSite;
     private boolean calendarRunning;
     private List<RealQuiz.Question> quiz;
@@ -107,6 +110,35 @@ public class MainActivity extends AppCompatActivity {
         tvBubble = findViewById(R.id.tv_bubble);
         tvHint = findViewById(R.id.tv_hint);
         tvFeatures = findViewById(R.id.tv_features);
+        titlePanel = findViewById(R.id.title_panel);
+
+        bind(R.id.title_design, new Runnable() {
+            public void run() {
+                chooseScenarioFromTitle();
+            }
+        });
+        bind(R.id.title_campaign, new Runnable() {
+            public void run() {
+                atTitle = false;
+                titlePanel.setVisibility(View.GONE);
+                enterCampaign();
+            }
+        });
+        bind(R.id.title_study, new Runnable() {
+            public void run() {
+                studyMenu();
+            }
+        });
+        bind(R.id.title_real, new Runnable() {
+            public void run() {
+                realDiagnosisMenu();
+            }
+        });
+        bind(R.id.title_results, new Runnable() {
+            public void run() {
+                resultsMenu();
+            }
+        });
         siteBar = findViewById(R.id.site_bar);
         siteTabs = findViewById(R.id.site_tabs);
 
@@ -143,12 +175,12 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        refresh();
-        if (state.day == 0 && scenario.revealedCount() == 0) {
-            tvHint.setText("初めてなら、社員を押して「マニュアルを読む」から始めてください");
-        }
-        if (!handleSharedJson(getIntent())) {
-            say("「" + scenario.explicitRequirement + "」");
+        showTitle();
+        say("「" + scenario.explicitRequirement + "」");
+        if (handleSharedJson(getIntent())) {
+            atTitle = false;
+            titlePanel.setVisibility(View.GONE);
+            refresh();
         }
     }
 
@@ -160,46 +192,6 @@ public class MainActivity extends AppCompatActivity {
         final List<String> actions = new ArrayList<>();
         final List<Runnable> handlers = new ArrayList<>();
 
-        actions.add("翌日へ進める");
-        handlers.add(new Runnable() {
-            public void run() {
-                advanceDay();
-            }
-        });
-
-        if (current != null && !current.resolved) {
-            actions.add("障害を診断する");
-            handlers.add(new Runnable() {
-                public void run() {
-                    chooseCommand();
-                }
-            });
-            actions.add("原因を報告する");
-            handlers.add(new Runnable() {
-                public void run() {
-                    chooseCause();
-                }
-            });
-        }
-
-        actions.add("設計をレビューする");
-        handlers.add(new Runnable() {
-            public void run() {
-                runReview();
-            }
-        });
-        actions.add("Firewallルールを確認する");
-        handlers.add(new Runnable() {
-            public void run() {
-                show("Firewallルール", evaluator.describeRules(scenario, design));
-            }
-        });
-        actions.add("案件の状況を確認する");
-        handlers.add(new Runnable() {
-            public void run() {
-                showBrief();
-            }
-        });
         if (campaignMode) {
             actions.add(calendarRunning ? "カレンダーを止める" : "カレンダーを進める");
             handlers.add(new Runnable() {
@@ -214,6 +206,20 @@ public class MainActivity extends AppCompatActivity {
                         startSite();
                     }
                 });
+                actions.add(activeSite.name + "の設計をレビューする");
+                handlers.add(new Runnable() {
+                    public void run() {
+                        Evaluator.Result r = evaluator.evaluate(
+                                activeSite.scenario, activeSite.design, 0, 0);
+                        StringBuilder sb = new StringBuilder(
+                                activeSite.design.summary(activeSite.scenario)).append("\n\n");
+                        for (Evaluator.Finding f : r.findings) {
+                            sb.append("[").append(f.level).append("] ").append(f.title).append('\n');
+                        }
+                        sb.append("\n障害の起きやすさ ").append(campaign.riskLabel(activeSite));
+                        show("設計レビュー", sb.toString());
+                    }
+                });
             }
             actions.add("経営の状況を見る");
             handlers.add(new Runnable() {
@@ -221,78 +227,87 @@ public class MainActivity extends AppCompatActivity {
                     campaignStatus();
                 }
             });
-            actions.add("設計モードに戻る");
-            handlers.add(new Runnable() {
-                public void run() {
-                    leaveCampaign();
-                }
-            });
         } else {
-            actions.add("10年の経営を始める");
+            actions.add("翌日へ進める");
             handlers.add(new Runnable() {
                 public void run() {
-                    enterCampaign();
+                    advanceDay();
                 }
             });
-        }
-        if (!campaignMode && state.day > 0) {
-            actions.add("この案件を納品する");
+
+            if (current != null && !current.resolved) {
+                actions.add("障害を診断する");
+                handlers.add(new Runnable() {
+                    public void run() {
+                        chooseCommand();
+                    }
+                });
+                actions.add("原因を報告する");
+                handlers.add(new Runnable() {
+                    public void run() {
+                        chooseCause();
+                    }
+                });
+            }
+
+            actions.add("設計をレビューする");
             handlers.add(new Runnable() {
                 public void run() {
-                    confirmDeliver();
+                    runReview();
                 }
             });
-        }
-        actions.add("これまでの成績を見る");
-        handlers.add(new Runnable() {
-            public void run() {
-                resultsMenu();
-            }
-        });
-        actions.add("いま使っているネットワークを見る");
-        handlers.add(new Runnable() {
-            public void run() {
-                realDiagnosisMenu();
-            }
-        });
-        actions.add("案件を切り替える");
-        handlers.add(new Runnable() {
-            public void run() {
-                switchScenario();
-            }
-        });
-        if (!campaignMode) {
             actions.add("この案件で選べる項目");
             handlers.add(new Runnable() {
                 public void run() {
                     optionsMenu();
                 }
             });
+            actions.add("Firewallルールを確認する");
+            handlers.add(new Runnable() {
+                public void run() {
+                    show("Firewallルール", evaluator.describeRules(scenario, design));
+                }
+            });
+            actions.add("案件の状況を確認する");
+            handlers.add(new Runnable() {
+                public void run() {
+                    showBrief();
+                }
+            });
+            if (state.day > 0) {
+                actions.add("この案件を納品する");
+                handlers.add(new Runnable() {
+                    public void run() {
+                        confirmDeliver();
+                    }
+                });
+            }
+            actions.add(state.easyMode ? "通常モードに戻す" : "簡単モードにする");
+            handlers.add(new Runnable() {
+                public void run() {
+                    toggleEasyMode();
+                }
+            });
+            actions.add("新人に交代する（用語の解説）");
+            handlers.add(new Runnable() {
+                public void run() {
+                    ally = Ally.NEWBIE;
+                    refresh();
+                    newbieMenu();
+                }
+            });
         }
+
         actions.add("マニュアルを読む");
         handlers.add(new Runnable() {
             public void run() {
                 manualMenu();
             }
         });
-        actions.add("機器の説明を読む");
+        actions.add("終了する");
         handlers.add(new Runnable() {
             public void run() {
-                deviceMenu();
-            }
-        });
-        actions.add(state.easyMode ? "通常モードに戻す" : "簡単モードにする");
-        handlers.add(new Runnable() {
-            public void run() {
-                toggleEasyMode();
-            }
-        });
-        actions.add("新人に交代する（用語の解説）");
-        handlers.add(new Runnable() {
-            public void run() {
-                ally = Ally.NEWBIE;
-                refresh();
-                newbieMenu();
+                confirmQuit();
             }
         });
 
@@ -348,6 +363,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void resumeCampaign(boolean resumed) {
+        atTitle = false;
+        titlePanel.setVisibility(View.GONE);
         campaignMode = true;
         activeSite = campaign.activeSites().get(0);
         buildSiteTabs();
@@ -366,15 +383,6 @@ public class MainActivity extends AppCompatActivity {
                         + "10年後に、儲けと満足度の順位が出ます。");
     }
 
-    private void leaveCampaign() {
-        stopCalendar();
-        campaign.save(this);
-        campaignMode = false;
-        activeSite = null;
-        siteBar.setVisibility(View.GONE);
-        refresh();
-        show("設計モード", "経営の進行は保存しました。「10年の経営を始める」で続きから再開できます。");
-    }
 
     /** 拠点のタブ。触ると図がその拠点に切り替わる。 */
     private void buildSiteTabs() {
@@ -920,40 +928,92 @@ public class MainActivity extends AppCompatActivity {
         design.customRules = null;
     }
 
-    private void switchScenario() {
+    private void showTitle() {
+        atTitle = true;
+        stopCalendar();
+        campaignMode = false;
+        activeSite = null;
+        titlePanel.setVisibility(View.VISIBLE);
+        siteBar.setVisibility(View.GONE);
+    }
+
+    /** タイトルから案件を選ぶ。ここで選んだら、終了するまで変えられない。 */
+    private void chooseScenarioFromTitle() {
         final List<Scenario> all = Scenario.all();
         String[] labels = new String[all.size()];
         for (int i = 0; i < all.size(); i++) {
             Scenario sc = all.get(i);
-            labels[i] = "[" + sc.level.label + "] " + sc.client + "（" + sc.boundary.label + "）"
-                    + (sc.id.equals(scenario.id) ? "  ← 対応中" : "");
+            GameState.Result r = state.loadResult(this, sc);
+            labels[i] = "[" + sc.level.label + "] " + sc.client
+                    + (r == null ? "" : "  納品済 " + r.rank());
         }
         new AlertDialog.Builder(this)
                 .setTitle("案件を選ぶ")
                 .setItems(labels, new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int which) {
-                        Scenario picked = all.get(which);
-                        if (picked.id.equals(scenario.id)) {
-                            return;
-                        }
-                        scenario = picked;
+                        scenario = all.get(which);
                         resetDesign();
                         for (Scenario.Hidden h : scenario.hidden) {
                             h.revealed = false;
                         }
                         current = state.load(MainActivity.this, design, scenario);
+                        atTitle = false;
+                        campaignMode = false;
+                        titlePanel.setVisibility(View.GONE);
                         refresh();
-                        show(scenario.client,
-                                "「" + scenario.explicitRequirement + "」\n\n"
-                                        + "[ 前提 ]\n" + scenario.boundary.label + "\n"
-                                        + scenario.boundary.detail + "\n\n"
-                                        + "この方針は契約時に決まっています。設計で選び直すものではありません。\n\n"
-                                        + "予算 " + scenario.budget + " 円");
                         say("「" + scenario.explicitRequirement + "」");
+                        show(scenario.client,
+                                "[" + scenario.level.label + "] " + scenario.level.detail + "\n\n"
+                                        + "「" + scenario.explicitRequirement + "」\n\n"
+                                        + "前提: " + scenario.boundary.label + "\n"
+                                        + scenario.boundary.detail + "\n\n"
+                                        + "予算 " + scenario.budget + " 円\n\n"
+                                        + "この案件を終えるまで、他の案件には移れません。"
+                                        + "やめるときは社員から「終了する」を選びます。");
+                    }
+                })
+                .setNegativeButton("やめる", null)
+                .show();
+    }
+
+    /** 学習メニュー。タイトルからだけ開ける。 */
+    private void studyMenu() {
+        final String[] items = {"マニュアルを読む", "機器の説明を読む"};
+        new AlertDialog.Builder(this)
+                .setTitle("学習メニュー")
+                .setItems(items, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (which == 0) {
+                            manualMenu();
+                        } else {
+                            deviceMenu();
+                        }
+                    }
+                })
+                .setNegativeButton("閉じる", null)
+                .show();
+    }
+
+    private void confirmQuit() {
+        new AlertDialog.Builder(this)
+                .setTitle("終了しますか")
+                .setMessage(campaignMode
+                        ? "経営の進行は保存されます。タイトルから「10年の経営」を選ぶと続きから再開できます。"
+                        : "この案件の進行は保存されます。もう一度選べば続きから再開できます。")
+                .setNegativeButton("続ける", null)
+                .setPositiveButton("終了する", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (campaignMode) {
+                            campaign.save(MainActivity.this);
+                        } else {
+                            save();
+                        }
+                        showTitle();
                     }
                 })
                 .show();
     }
+
 
     private void manualMenu() {
         final List<Manual> sections = Manual.sections();
@@ -2335,6 +2395,9 @@ public class MainActivity extends AppCompatActivity {
     // ------------------------------------------------------------------
 
     private void refresh() {
+        if (atTitle) {
+            return;
+        }
         if (campaignMode && activeSite != null) {
             refreshCampaign();
             return;
@@ -2507,6 +2570,15 @@ public class MainActivity extends AppCompatActivity {
                     }
                 })
                 .show();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (atTitle) {
+            super.onBackPressed();
+            return;
+        }
+        confirmQuit();
     }
 
     @Override

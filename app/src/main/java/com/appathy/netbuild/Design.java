@@ -253,79 +253,93 @@ public class Design {
 
     public NetGraph buildGraph(Scenario scenario) {
         if (scenario != null && scenario.boundary == Scenario.Boundary.SASE) {
-            return buildSaseGraph();
+            return buildSaseGraph(scenario);
         }
-        return buildOnPremGraph();
+        return buildOnPremGraph(scenario);
     }
 
     /**
      * SASE構成。拠点に境界を置かず、端末はどこにいてもSASEを通す。
      * 例外を残すと、そこだけ検査を通らない経路になる。
      */
-    private NetGraph buildSaseGraph() {
+    private NetGraph buildSaseGraph(Scenario scenario) {
         NetGraph g = new NetGraph(NetGraph.SOURCE_GAME);
+        boolean hasOffice = scenario == null || scenario.usesNode("srv");
+
         g.node("home", "host", "社員端末").put("zone", "remote");
         g.node("sase", "sase", "SASE").put("zone", "infra");
         g.node("net", "internet", "インターネット").put("zone", "internet");
         g.node("cloud", "cloud", "クラウド業務システム").put("zone", "cloud");
-        g.node("sw", "switch", "事務所スイッチ").put("zone", "infra");
-        g.node("fw", "firewall", "事務所ルーター").put("zone", "infra");
-        g.node("srv", "server", "受発注システム").put("zone", "internal").put("vlan", "10");
-        g.node("dns1", "dns", "DNS").put("zone", "internal").put("vlan", "10");
-
         g.edge("home", "sase", "wan");
         g.edge("sase", "net", "wan");
         g.edge("cloud", "net", "wan");
-        g.edge("srv", "sw", "lan");
-        if (l3Switch) {
-            g.edge("l3", "sw", "uplink");
+
+        if (hasOffice) {
+            g.node("sw", "switch", "事務所スイッチ").put("zone", "infra");
+            g.node("fw", "firewall", "事務所ルーター").put("zone", "infra");
+            g.node("srv", "server", "受発注システム").put("zone", "internal").put("vlan", "10");
+            g.node("dns1", "dns", "DNS").put("zone", "internal").put("vlan", "10");
+            g.edge("srv", "sw", "lan");
+            g.edge("dns1", "sw", "lan");
+            g.edge("sw", "fw", "uplink");
+            g.edge("fw", "net", "wan");
+            if (dnsRedundant) {
+                g.node("dns2", "dns", "DNS副").put("zone", "internal").put("vlan", "10");
+                g.edge("dns2", "sw", "lan");
+            }
         }
         if (wifi) {
-            g.edge("ap", "sw", "lan");
+            g.node("ap", "ap", "無線AP").put("zone", "remote");
+            g.edge("ap", "home", "lan");
         }
-        if (fileShare) {
+        if (fileShare && hasOffice) {
+            g.node("fs", "server", "ファイル共有").put("zone", "internal").put("vlan", "10");
             g.edge("fs", "sw", "lan");
         }
-        if (mfp) {
-            g.edge("mfp", "sw", "lan");
-        }
-        if (siteLink) {
-            g.edge("site2", "fw", "wan");
-            g.edge("site2sw", "site2", "uplink");
-            g.edge("site2pc", "site2sw", "lan");
-            g.edge("site3", "fw", "wan");
-            g.edge("site3pc", "site3", "lan");
-        }
-        g.edge("dns1", "sw", "lan");
-        g.edge("sw", "fw", "uplink");
-        g.edge("fw", "net", "wan");
         if (saseBypass) {
             g.edge("home", "net", "wan");
-        }
-        if (dnsRedundant) {
-            g.node("dns2", "dns", "DNS副").put("zone", "internal").put("vlan", "10");
-            g.edge("dns2", "sw", "lan");
         }
         return g;
     }
 
-    private NetGraph buildOnPremGraph() {
+    /** その案件に関係ないものは図に出さない。採用したものだけが現れる。 */
+    private boolean shows(Scenario scenario, String nodeId, String zone) {
+        if (scenario == null) {
+            return true;
+        }
+        if (scenario.usesNode(nodeId)) {
+            return true;
+        }
+        return zone != null && scenario.usesZone(zone);
+    }
+
+    private NetGraph buildOnPremGraph(Scenario scenario) {
         NetGraph g = new NetGraph(NetGraph.SOURCE_GAME);
         String employeeVlan = "10";
         String guestVlanId = guestVlan ? "20" : "10";
         String serverVlan = dmz ? "30" : "10";
 
+        boolean hasGuest = shows(scenario, "guest", "guest");
+        boolean hasWeb = shows(scenario, "web", "dmz") || dmz;
+        boolean hasSrv = shows(scenario, "srv", null) || fileShare;
+
         g.node("pc", "host", "社員PC").put("zone", "internal").put("vlan", employeeVlan);
-        g.node("guest", "host", "来客端末").put("zone", "guest").put("vlan", guestVlanId);
-        g.node("web", "server", "Webサーバー")
-                .put("zone", dmz ? "dmz" : "internal").put("vlan", serverVlan);
+        if (hasGuest) {
+            g.node("guest", "host", "来客端末").put("zone", "guest").put("vlan", guestVlanId);
+        }
+        if (hasWeb) {
+            g.node("web", "server", "Webサーバー")
+                    .put("zone", dmz ? "dmz" : "internal").put("vlan", serverVlan);
+        }
         g.node("sw", "switch", "スイッチ").put("zone", "infra");
         g.node("fw", "firewall", "Firewall").put("zone", "infra");
         g.node("net", "internet", "インターネット").put("zone", "internet");
         // 同居のままだと、社内サーバーは公開サーバーと同じ区画に置かれる
         String serverZone = serverSharedWithWeb ? (dmz ? "dmz" : "internal") : "internal";
         String serverVlanId = serverSharedWithWeb ? serverVlan : employeeVlan;
-        g.node("srv", "server", "社内サーバー").put("zone", serverZone).put("vlan", serverVlanId);
+        if (hasSrv) {
+            g.node("srv", "server", "社内サーバー").put("zone", serverZone).put("vlan", serverVlanId);
+        }
         if (proxy) {
             g.node("proxy", "proxy", "プロキシ").put("zone", "internal").put("vlan", employeeVlan);
         }
@@ -349,18 +363,30 @@ public class Design {
             g.node("site3", "site", "第3拠点").put("zone", "internal").put("vlan", employeeVlan);
             g.node("site3pc", "host", "第3拠点PC").put("zone", "internal").put("vlan", employeeVlan);
         }
-        g.node("cloud", "cloud", "クラウド").put("zone", "cloud");
-        g.node("vendor", "server", "保守業者").put("zone", "vendor");
-        g.node("home", "host", "在宅端末").put("zone", "remote");
+        if (shows(scenario, "cloud", "cloud")) {
+            g.node("cloud", "cloud", "クラウド").put("zone", "cloud");
+        }
+        if (shows(scenario, "vendor", "vendor")) {
+            g.node("vendor", "server", "保守業者").put("zone", "vendor");
+        }
+        if (shows(scenario, "home", "remote")) {
+            g.node("home", "host", "在宅端末").put("zone", "remote");
+        }
         g.node("dns1", "dns", "DNS").put("zone", "internal").put("vlan", employeeVlan);
         if (dnsRedundant) {
             g.node("dns2", "dns", "DNS副").put("zone", "internal").put("vlan", employeeVlan);
         }
 
         g.edge("pc", "sw", "lan");
-        g.edge("guest", "sw", "lan");
-        g.edge("web", "sw", "lan");
-        g.edge("srv", "sw", "lan");
+        if (hasGuest) {
+            g.edge("guest", "sw", "lan");
+        }
+        if (hasWeb) {
+            g.edge("web", "sw", "lan");
+        }
+        if (hasSrv) {
+            g.edge("srv", "sw", "lan");
+        }
         if (proxy) {
             g.edge("proxy", "sw", "lan");
         }
@@ -389,9 +415,15 @@ public class Design {
         }
         g.edge("sw", "fw", "uplink");
         g.edge("fw", "net", "wan");
-        g.edge("cloud", "net", "wan");
-        g.edge("vendor", "net", "wan");
-        g.edge("home", "net", "wan");
+        if (g.find("cloud") != null) {
+            g.edge("cloud", "net", "wan");
+        }
+        if (g.find("vendor") != null) {
+            g.edge("vendor", "net", "wan");
+        }
+        if (g.find("home") != null) {
+            g.edge("home", "net", "wan");
+        }
         return g;
     }
 
